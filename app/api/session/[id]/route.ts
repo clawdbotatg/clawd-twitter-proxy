@@ -24,6 +24,9 @@ export async function GET(req: NextRequest, { params }: Params) {
 
 class Refuse extends Error {}
 
+/** Failures on our side (timeouts, crashes) don't use up an image. */
+const imagesUsed = (x: Session) => x.images.filter(i => i.status !== "failed").length;
+
 /** Every user action on a paid session. One job in flight at a time. */
 export async function POST(req: NextRequest, { params }: Params) {
   const { id } = await params;
@@ -67,7 +70,7 @@ export async function POST(req: NextRequest, { params }: Params) {
           if (!prompt) throw new Refuse("describe the image");
           if (prompt.length > MAX_IMAGE_PROMPT_CHARS) throw new Refuse(`keep it under ${MAX_IMAGE_PROMPT_CHARS} characters`);
           if (x.pending) throw new Refuse("clawd is still working on the last one");
-          if (x.images.length >= MAX_IMAGES) throw new Refuse(`that's all ${MAX_IMAGES} images for this session`);
+          if (imagesUsed(x) >= MAX_IMAGES) throw new Refuse(`that's all ${MAX_IMAGES} images for this session`);
           const n = x.images.length;
           x.images.push({ n, prompt, withClawd: !!body.withClawd, status: "pending", source: "generated" });
           job = { type: "image", n };
@@ -75,7 +78,7 @@ export async function POST(req: NextRequest, { params }: Params) {
         }
         case "upload": {
           if (x.pending) throw new Refuse("clawd is still working on the last one");
-          if (x.images.length >= MAX_IMAGES) throw new Refuse(`that's all ${MAX_IMAGES} images for this session`);
+          if (imagesUsed(x) >= MAX_IMAGES) throw new Refuse(`that's all ${MAX_IMAGES} images for this session`);
           const n = x.images.length;
           x.images.push({ n, prompt: "", withClawd: false, status: "pending", source: "upload" });
           job = { type: "image", n };

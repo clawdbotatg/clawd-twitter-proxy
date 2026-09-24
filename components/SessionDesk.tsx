@@ -258,11 +258,11 @@ export function SessionDesk({ id }: { id: string }) {
               className={`border bg-paper text-ink shadow-xl ${dragging ? "border-lobster border-2" : "border-line"}`}
               onDragOver={e => { e.preventDefault(); setDragging(true); }}
               onDragLeave={() => setDragging(false)}
-              onDrop={e => { e.preventDefault(); setDragging(false); if (!s.pending && s.images.length < MAX_IMAGES) upload(e.dataTransfer.files[0]); }}
+              onDrop={e => { e.preventDefault(); setDragging(false); if (!s.pending && s.images.filter(i => i.status !== "failed").length < MAX_IMAGES) upload(e.dataTransfer.files[0]); }}
             >
               <div className="border-b border-line bg-paper-dark px-6 py-3 flex justify-between items-baseline">
                 <span className="smallcaps text-sm font-semibold text-ink-soft">Image</span>
-                <span className="font-mono text-xs text-ink-soft">{s.images.length}/{MAX_IMAGES}</span>
+                <span className="font-mono text-xs text-ink-soft">{s.images.filter(i => i.status !== "failed").length}/{MAX_IMAGES}</span>
               </div>
               <div className="p-5 space-y-3">
                 {s.images.length > 0 && (
@@ -284,7 +284,7 @@ export function SessionDesk({ id }: { id: string }) {
                     ))}
                   </div>
                 )}
-                {s.images.length < MAX_IMAGES && (
+                {s.images.filter(i => i.status !== "failed").length < MAX_IMAGES && (
                   <>
                     <textarea
                       value={imgPrompt}

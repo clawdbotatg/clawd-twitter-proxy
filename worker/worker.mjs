@@ -179,9 +179,23 @@ async function watchClawdTweets() {
   }
 }
 
+// Graceful restart: on SIGTERM stop claiming, let in-flight jobs finish
+// (launchd's ExitTimeOut gives us 5 minutes), then exit. A kill mid-job used
+// to strand a paying user's turn until the 6-minute timeout.
+let stopping = false;
+process.on("SIGTERM", async () => {
+  if (stopping) return;
+  stopping = true;
+  log(`SIGTERM: finishing ${running} job(s), then exiting`);
+  while (running > 0) await sleep(500);
+  log("drained, exiting");
+  process.exit(0);
+});
+
 async function poll() {
   newClawdTweets(); // prime the offset: start at the end of the log
   for (;;) {
+    if (stopping) { await sleep(1000); continue; }
     await watchClawdTweets();
     if (running >= CONCURRENCY) { await sleep(500); continue; }
     let claimed;
