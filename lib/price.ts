@@ -6,7 +6,7 @@
  *   - reset: START_FRACTION (10%) of the single largest CV balance on larv.ai
  *     (never below the floor);
  *   - the first hour stays expensive: it only halves, 10% → 5%;
- *   - then it falls fast, 5% → FLOOR_CV over the next FALL_MS (8h),
+ *   - then it falls fast, 5% → FLOOR_CV over the next FALL_MS (3h) — floor 4h after the tweet,
  *     and rests at the floor until the next tweet.
  * Both legs are exponential, so each is a steady percentage drop per minute.
  * Buying a session does NOT reset the price — only a tweet does. */
@@ -16,7 +16,7 @@ export const START_FRACTION = 0.1;
 export const HOLD_MS = 60 * 60 * 1000;
 /** Where the first hour ends, as a fraction of the reset price. */
 export const HOLD_END_RATIO = 0.5;
-export const FALL_MS = 8 * 60 * 60 * 1000;
+export const FALL_MS = 3 * 60 * 60 * 1000;
 export const DECAY_MS = HOLD_MS + FALL_MS;
 
 export interface PriceState {

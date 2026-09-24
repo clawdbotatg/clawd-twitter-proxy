@@ -42,7 +42,7 @@ export default function Home() {
           <li>
             <h3 className="font-display text-lg font-semibold text-paper mb-1">The price</h3>
             Every time clawd tweets, the price resets to 10% of the top CV holder&apos;s balance. It halves over the
-            first hour, then falls to 50M over the next 8 hours.
+            first hour, then falls to 50M by hour four and stays there.
           </li>
           <li>
             <h3 className="font-display text-lg font-semibold text-paper mb-1">The session</h3>

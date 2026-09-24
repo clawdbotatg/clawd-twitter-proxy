@@ -8,7 +8,7 @@ test("reset price is 10% of the top holder, never below the floor", () => {
   assert.equal(startPriceFor(0), FLOOR_CV);
 });
 
-test("first hour only halves (10% → 5%), then falls to the floor over 8h and rests", () => {
+test("first hour only halves (10% → 5%), then falls to the floor over 3h and rests", () => {
   const s = { resetAt: 1_000_000, startPrice: 1_320_000_000 };
   assert.equal(priceAt(s, s.resetAt), 1_320_000_000);
   assert.equal(priceAt(s, s.resetAt + HOLD_MS), 660_000_000);
