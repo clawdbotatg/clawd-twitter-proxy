@@ -96,19 +96,23 @@ export async function getPriceState(): Promise<PriceState> {
   return toPrice(again[0]);
 }
 
-/** A tweet posted: restart the auction at 10% of today's top holder. */
-export async function resetPrice(): Promise<PriceState> {
+/** clawd tweeted: restart the auction at 10% of today's top holder, clocked
+ * from the tweet's time. Never moves the clock backwards (a late or replayed
+ * report of an older tweet is a no-op). */
+export async function resetPrice(at = Date.now()): Promise<PriceState> {
   const highest = await fetchHighestCV();
-  const now = Date.now();
+  const now = Math.min(at, Date.now());
   const rows = (highest
     ? await db()`INSERT INTO price (id, reset_at, start_price) VALUES (1, ${now}, ${startPriceFor(highest)})
                  ON CONFLICT (id) DO UPDATE SET reset_at = EXCLUDED.reset_at, start_price = EXCLUDED.start_price
+                 WHERE price.reset_at < EXCLUDED.reset_at
                  RETURNING reset_at, start_price`
     // Oracle down: restart the clock at the previous start price.
     : await db()`INSERT INTO price (id, reset_at, start_price) VALUES (1, ${now}, ${startPriceFor(0)})
                  ON CONFLICT (id) DO UPDATE SET reset_at = EXCLUDED.reset_at
+                 WHERE price.reset_at < EXCLUDED.reset_at
                  RETURNING reset_at, start_price`) as PriceRow[];
-  return toPrice(rows[0]);
+  return rows[0] ? toPrice(rows[0]) : getPriceState();
 }
 
 // ---------- sessions ----------

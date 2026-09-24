@@ -78,7 +78,7 @@ export function BuyCard() {
           <li>▸ <strong className="text-ink">{MAX_TURNS} turns</strong> with clawd (Claude Opus 5.5) to shape one tweet</li>
           <li>▸ up to <strong className="text-ink">{MAX_IMAGES} images</strong> (gpt-image), with or without clawd in them</li>
           <li>▸ press <strong className="text-ink">tweet</strong> and it posts from <a className="underline hover:text-lobster" href="https://x.com/clawdbotatg" target="_blank" rel="noopener noreferrer">@clawdbotatg</a>, or walk away. The burn is final either way.</li>
-          <li>▸ your tweet resets the price to 10% of the top holder&apos;s CV</li>
+          <li>▸ any tweet from clawd resets the price to 10% of the top holder&apos;s CV</li>
         </ul>
 
         {mounted && address && account && (

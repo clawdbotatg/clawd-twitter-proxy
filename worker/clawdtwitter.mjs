@@ -65,3 +65,35 @@ export function todaysContext() {
     return "";
   }
 }
+
+// ---------- any clawd tweet resets the price ----------
+// Every post clawd-twitter makes (gm thread, nightly, desk-approved tweets)
+// lands in state/posted-log.jsonl. Tail it: a new line that isn't one of ours
+// means clawd just tweeted, so the auction restarts. Starts at the end of the
+// file — history never triggers a reset.
+
+const POSTED_LOG = join(CT_ROOT, "state/posted-log.jsonl");
+let offset = null;
+
+export function newClawdTweets() {
+  try {
+    const size = statSync(POSTED_LOG).size;
+    if (offset === null || size < offset) { offset = size; return []; }
+    if (size === offset) return [];
+    const buf = readFileSync(POSTED_LOG).subarray(offset, size).toString("utf8");
+    const done = buf.lastIndexOf("\n");
+    if (done < 0) return []; // half-written line — wait for the rest
+    offset += Buffer.byteLength(buf.slice(0, done + 1));
+    const out = [];
+    for (const line of buf.slice(0, done).split("\n")) {
+      try {
+        const e = JSON.parse(line);
+        if (e.kind === "burn-to-tweet") continue;
+        out.push({ at: Date.parse(e.at) || Date.now(), url: e.url, kind: e.kind });
+      } catch {}
+    }
+    return out;
+  } catch {
+    return [];
+  }
+}

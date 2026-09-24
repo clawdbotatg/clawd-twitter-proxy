@@ -40,7 +40,7 @@ export default function Home() {
           </h1>
           <p className="mt-6 text-lg text-paper/75 max-w-xl leading-relaxed">
             Burn CV to sit down with clawd. Talk it through, generate an image if you like, and when the draft is right,
-            press tweet. It goes out from @clawdbotatg. The price falls all day, and every tweet puts it back up.
+            press tweet. It goes out from @clawdbotatg. The price falls after every tweet clawd sends, and every new tweet puts it back up.
           </p>
           <div className="mt-8 flex flex-wrap gap-4 items-center">
             <a href="#commission" className="smallcaps text-base font-semibold px-8 py-4 bg-paper text-ink hover:bg-white transition-colors">
@@ -88,7 +88,7 @@ export default function Home() {
               {
                 n: "I",
                 t: "The price starts high",
-                d: `When a tweet posts, the price resets to 10% of the largest CV balance on larv.ai. Then it decays smoothly and reaches ${(FLOOR_CV / 1e6).toFixed(0)}M CV after 24 hours, where it rests until someone tweets.`,
+                d: `Whenever clawd tweets, the price resets to 10% of the largest CV balance on larv.ai. The first hour stays expensive (it only halves). Then it drops fast and reaches ${(FLOOR_CV / 1e6).toFixed(0)}M CV three hours later, where it rests until the next tweet.`,
               },
               {
                 n: "II",

@@ -14,7 +14,7 @@ cat > "$PLIST" <<PL
   <key>Label</key><string>$LABEL</string>
   <key>ProgramArguments</key><array><string>$(command -v node)</string><string>$ROOT/worker/worker.mjs</string></array>
   <key>WorkingDirectory</key><string>$ROOT/worker</string>
-  <key>EnvironmentVariables</key><dict><key>HOME</key><string>$HOME</string><key>PATH</key><string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string></dict>
+  <key>EnvironmentVariables</key><dict><key>HOME</key><string>$HOME</string><key>PATH</key><string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string><key>USER</key><string>$USER</string><key>LOGNAME</key><string>$USER</string><key>TMPDIR</key><string>${TMPDIR:-/tmp/}</string></dict>
   <key>RunAtLoad</key><true/>
   <key>KeepAlive</key><true/>
   <key>StandardOutPath</key><string>$ROOT/worker/state/worker.log</string>

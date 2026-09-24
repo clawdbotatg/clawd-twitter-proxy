@@ -14,7 +14,7 @@ import { guardTweet } from "./guard.mjs";
 import { reviewImagePrompt, reviewTweet } from "./safety.mjs";
 import { generateImage } from "./image.mjs";
 import { postTweet } from "./twitter.mjs";
-import { recordInPostedLog, telegram } from "./clawdtwitter.mjs";
+import { newClawdTweets, recordInPostedLog, telegram } from "./clawdtwitter.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const STATE = join(HERE, "state");
@@ -145,8 +145,24 @@ async function handle({ job, session, imageB64, maxTurns }) {
 const IDLE_POLL_MS = Number(process.env.IDLE_POLL_MS || 20_000);
 let running = 0;
 
+// clawd tweeted outside this site → restart the auction (checked every loop; a
+// file stat is free).
+async function watchClawdTweets() {
+  const fresh = newClawdTweets();
+  if (!fresh.length) return;
+  const at = Math.max(...fresh.map(t => t.at));
+  try {
+    await api("/api/worker/reset", { at });
+    log("price reset: clawd tweeted", fresh.map(t => `${t.kind} ${t.url}`).join(", "));
+  } catch (e) {
+    log("price reset failed", e.message);
+  }
+}
+
 async function poll() {
+  newClawdTweets(); // prime the offset: start at the end of the log
   for (;;) {
+    await watchClawdTweets();
     if (running >= CONCURRENCY) { await sleep(500); continue; }
     let claimed;
     try {

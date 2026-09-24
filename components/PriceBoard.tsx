@@ -40,13 +40,11 @@ export function PriceBoard() {
         </div>
 
         <dl className="mt-6 grid grid-cols-2 gap-x-6 gap-y-3 text-sm">
-          <dt className="smallcaps text-ink-soft">Last tweet</dt>
+          <dt className="smallcaps text-ink-soft">clawd last tweeted</dt>
+          <dd className="text-right tabular">{info ? `${ago(serverNow - info.resetAt)} ago` : "…"}</dd>
+          <dt className="smallcaps text-ink-soft">Expensive hour</dt>
           <dd className="text-right tabular">
-            {info?.lastTweet ? (
-              <a href={info.lastTweet.url} target="_blank" rel="noopener noreferrer" className="underline hover:text-lobster">
-                {ago(serverNow - info.lastTweet.postedAt)} ago
-              </a>
-            ) : info ? `none yet (clock started ${ago(serverNow - info.resetAt)} ago)` : "…"}
+            {info ? (serverNow < info.resetAt + 3_600_000 ? `${ago(info.resetAt + 3_600_000 - serverNow)} left` : "over") : "…"}
           </dd>
           <dt className="smallcaps text-ink-soft">Floor in</dt>
           <dd className="text-right tabular">{info ? (atFloor ? "reached" : ago(info.floorAt - serverNow)) : "…"}</dd>
