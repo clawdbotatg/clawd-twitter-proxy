@@ -11,7 +11,7 @@ import { join, dirname } from "path";
 import { fileURLToPath } from "url";
 import { runTurn } from "./agent.mjs";
 import { guardTweet } from "./guard.mjs";
-import { reviewImagePrompt, reviewTweet } from "./safety.mjs";
+import { reviewImagePrompt, reviewTweet, reviewUpload } from "./safety.mjs";
 import { generateImage } from "./image.mjs";
 import { postTweet } from "./twitter.mjs";
 import { newClawdTweets, recordInPostedLog, telegram } from "./clawdtwitter.mjs";
@@ -86,6 +86,24 @@ async function handle({ job, session, imageB64, maxTurns }) {
     }
   }
 
+  if (job.type === "image" && session.images[job.n]?.source === "upload") {
+    // An upload: already stored; just vet it.
+    const img = session.images[job.n];
+    try {
+      if (!imageB64) throw new Error("upload missing");
+      const v = await reviewUpload(imageB64);
+      if (!v.allow) {
+        telegram(`🛡️ upload blocked for ${short(session.wallet)}: ${v.reason}`);
+        return report({ ...base, n: job.n, ok: false, refused: true, note: `image refused: ${v.reason}` });
+      }
+      log("upload ok", session.id, job.n);
+      return report({ ...base, n: job.n, ok: true });
+    } catch (e) {
+      log("upload check failed", session.id, e.message);
+      return report({ ...base, n: job.n, ok: false, note: "couldn't check that image. Try again" });
+    }
+  }
+
   if (job.type === "image") {
     const img = session.images[job.n];
     try {
@@ -114,7 +132,7 @@ async function handle({ job, session, imageB64, maxTurns }) {
 
     let v;
     try {
-      v = await reviewTweet(g.text, img?.prompt);
+      v = await reviewTweet(g.text, img ? imageB64 : null, img && img.source !== "upload" ? img.prompt : null);
     } catch (e) {
       log("review failed", session.id, e.message);
       return report({ ...base, ok: false, note: "the safety check didn't run — try again" });

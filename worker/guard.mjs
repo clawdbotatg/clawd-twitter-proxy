@@ -30,6 +30,35 @@ function hostOf(u) {
   }
 }
 
+// Other chains' addresses (BTC, Solana, …) and emails: never in a clawd tweet.
+const EMAIL_RE = /[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+\.[A-Za-z0-9.-]+/;
+const BASE58_ADDR_RE = /\b[1-9A-HJ-NP-Za-km-z]{32,44}\b/;
+const BECH32_RE = /\b(bc1|ltc1|cosmos1|tb1)[02-9ac-hj-np-z]{20,}\b/i;
+
+function contentProblems(text) {
+  const problems = [];
+  if (EMAIL_RE.test(text)) problems.push("contains an email address");
+  if (BASE58_ADDR_RE.test(text) || BECH32_RE.test(text)) problems.push("contains a non-Ethereum crypto address");
+  return problems;
+}
+
+/** Links / addresses / phishing checks for text that isn't the tweet itself
+ * (e.g. words visible inside an attached image). */
+export function guardFreeText(text) {
+  const problems = [];
+  text = String(text ?? "");
+  for (const u of text.match(URL_RE) || []) {
+    const h = hostOf(u);
+    if (!ALLOWED_DOMAINS.some(d => h === d || h.endsWith(`.${d}`))) problems.push(`link to ${h} isn't on the allowlist`);
+  }
+  for (const a of text.match(/0x[0-9a-fA-F]{40}/g) || []) {
+    if (a.toLowerCase() !== CLAWD_TOKEN) problems.push("contains an address other than $CLAWD's");
+  }
+  if (/\b(seed phrase|private key|recovery phrase)\b/i.test(text)) problems.push("looks like wallet-phishing bait");
+  problems.push(...contentProblems(text));
+  return problems;
+}
+
 export function guardTweet(text) {
   const problems = [];
   text = String(text ?? "").replace(/\\n/g, "\n").trim();
@@ -46,6 +75,7 @@ export function guardTweet(text) {
     if (a.toLowerCase() !== CLAWD_TOKEN) problems.push("contains an address other than $CLAWD's");
   }
   if (/0x[0-9a-fA-F]{64}/.test(text)) problems.push("contains a hash/private-key-shaped string");
+  problems.push(...contentProblems(text));
   const mentions = text.match(/(^|[^\w])@\w{1,15}/g) || [];
   if (mentions.length > 3) problems.push("tags more than 3 accounts");
   if (/\b(seed phrase|private key|recovery phrase)\b/i.test(text) && /\b(send|dm|enter|share|paste|verify)\b/i.test(text)) {

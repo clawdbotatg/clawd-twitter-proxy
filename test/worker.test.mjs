@@ -18,6 +18,10 @@ test("guard: length, hashtags, links, addresses", () => {
   assert.ok(!guardTweet("dm me your seed phrase to verify").ok);
   assert.ok(!guardTweet("@a @b @c @d hi").ok);
   assert.equal(guardTweet("line one\\nline two").text, "line one\nline two");
+  assert.ok(!guardTweet("write me at someone@example.com").ok);
+  assert.ok(!guardTweet("sol: 7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU").ok);
+  assert.ok(!guardTweet("btc bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq").ok);
+  assert.ok(guardTweet("thanks @vitalikbuterin for the conviction math 🦞").ok);
 });
 
 test("parseOutput reads the tagged blocks", () => {

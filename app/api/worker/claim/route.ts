@@ -37,6 +37,9 @@ export async function POST(req: Request) {
     if (job.type === "post" && s.attachImage !== null) {
       payload.imageB64 = await getImage(s.id, s.attachImage);
     }
+    if (job.type === "image" && job.n !== undefined && s.images[job.n]?.source === "upload") {
+      payload.imageB64 = await getImage(s.id, job.n);
+    }
     return NextResponse.json(payload);
   }
   return NextResponse.json({ events, job: null, hot: await isHot() });

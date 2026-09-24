@@ -44,8 +44,12 @@ export function childEnv() {
   return env;
 }
 
-export function claudeArgs(systemPromptFile, appendFile) {
+export function claudeArgs(systemPromptFile, appendFile, streamJson = false) {
   const extra = appendFile ? ["--append-system-prompt-file", appendFile] : [];
+  // Images need a structured message on stdin; text-only prompts stay plain.
+  const io = streamJson
+    ? ["--input-format", "stream-json", "--output-format", "stream-json", "--verbose"]
+    : ["--output-format", "json"];
   return [
     "-p",
     "--model", MODEL,
@@ -55,15 +59,17 @@ export function claudeArgs(systemPromptFile, appendFile) {
     "--no-session-persistence",
     "--exclude-dynamic-system-prompt-sections",
     "--system-prompt-file", systemPromptFile,
-    "--output-format", "json",
+    ...io,
     ...extra,
   ];
 }
 
-/** Run one prompt against a system-prompt file; resolves to the text result. */
-export function runClaude(systemPromptFile, prompt, appendFile) {
+/** Run one prompt against a system-prompt file; resolves to the text result.
+ * `images` are base64 JPEGs shown to the model alongside the prompt. */
+export function runClaude(systemPromptFile, prompt, appendFile, images = []) {
+  const streamJson = images.length > 0;
   return new Promise((resolve, reject) => {
-    const child = spawn(CLAUDE_BIN, claudeArgs(systemPromptFile, appendFile), {
+    const child = spawn(CLAUDE_BIN, claudeArgs(systemPromptFile, appendFile, streamJson), {
       cwd: SANDBOX,
       env: childEnv(),
       stdio: ["pipe", "pipe", "pipe"],
@@ -76,7 +82,12 @@ export function runClaude(systemPromptFile, prompt, appendFile) {
     child.on("close", code => {
       clearTimeout(timer);
       let d;
-      try { d = JSON.parse(out); } catch {
+      try {
+        d = streamJson
+          ? out.split("\n").filter(Boolean).map(l => JSON.parse(l)).find(e => e.type === "result")
+          : JSON.parse(out);
+        if (!d) throw new Error("no result");
+      } catch {
         return reject(new Error(`claude exited ${code}: ${(err || out).slice(0, 300)}`));
       }
       if (d.is_error || typeof d.result !== "string") {
@@ -84,6 +95,14 @@ export function runClaude(systemPromptFile, prompt, appendFile) {
       }
       resolve(d.result);
     });
-    child.stdin.end(prompt);
+    if (streamJson) {
+      const content = [
+        ...images.map(data => ({ type: "image", source: { type: "base64", media_type: "image/jpeg", data } })),
+        { type: "text", text: prompt },
+      ];
+      child.stdin.end(JSON.stringify({ type: "user", message: { role: "user", content } }) + "\n");
+    } else {
+      child.stdin.end(prompt);
+    }
   });
 }

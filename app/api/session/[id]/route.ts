@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { MAX_IMAGES, MAX_IMAGE_PROMPT_CHARS, MAX_MESSAGE_CHARS, MAX_TURNS } from "@/lib/limits";
-import { JobType, Session, authorized, enqueue, getSession, newId, publicView, updateSession } from "@/lib/store";
+import { MAX_IMAGES, MAX_IMAGE_PROMPT_CHARS, MAX_MESSAGE_CHARS, MAX_TURNS, MAX_UPLOAD_BYTES } from "@/lib/limits";
+import { JobType, Session, authorized, enqueue, getSession, newId, publicView, putImage, updateSession } from "@/lib/store";
 
 export const dynamic = "force-dynamic";
 
@@ -32,6 +32,18 @@ export async function POST(req: NextRequest, { params }: Params) {
   if (!s0) return NextResponse.json({ error: "no such session" }, { status: 404 });
   if (!authorized(s0, tokenOf(req, body))) return NextResponse.json({ error: "not your session" }, { status: 403 });
 
+  // An upload is validated and stored before the session update; the worker
+  // then vets it (vision review) before it can be attached.
+  let upload: string | null = null;
+  if (body.action === "upload") {
+    const b64 = typeof body.jpeg === "string" ? body.jpeg.replace(/^data:image\/jpeg;base64,/, "") : "";
+    const bytes = Buffer.from(b64, "base64");
+    const isJpeg = bytes.length > 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
+    if (!isJpeg) return NextResponse.json({ error: "that isn't an image we can use" }, { status: 400 });
+    if (bytes.length > MAX_UPLOAD_BYTES) return NextResponse.json({ error: "image too large" }, { status: 400 });
+    upload = bytes.toString("base64");
+  }
+
   let job: { type: JobType; n?: number } | null = null;
   try {
     const s = await updateSession(id, (x: Session) => {
@@ -57,7 +69,15 @@ export async function POST(req: NextRequest, { params }: Params) {
           if (x.pending) throw new Refuse("clawd is still working on the last one");
           if (x.images.length >= MAX_IMAGES) throw new Refuse(`that's all ${MAX_IMAGES} images for this session`);
           const n = x.images.length;
-          x.images.push({ n, prompt, withClawd: !!body.withClawd, status: "pending" });
+          x.images.push({ n, prompt, withClawd: !!body.withClawd, status: "pending", source: "generated" });
+          job = { type: "image", n };
+          break;
+        }
+        case "upload": {
+          if (x.pending) throw new Refuse("clawd is still working on the last one");
+          if (x.images.length >= MAX_IMAGES) throw new Refuse(`that's all ${MAX_IMAGES} images for this session`);
+          const n = x.images.length;
+          x.images.push({ n, prompt: "", withClawd: false, status: "pending", source: "upload" });
           job = { type: "image", n };
           break;
         }
@@ -81,6 +101,7 @@ export async function POST(req: NextRequest, { params }: Params) {
     if (!s) return NextResponse.json({ error: "no such session" }, { status: 404 });
     if (job && s.pending) {
       const j = job as { type: JobType; n?: number };
+      if (upload && j.n !== undefined) await putImage(id, j.n, upload);
       await enqueue({ jobId: s.pending.jobId, type: j.type, sessionId: id, n: j.n });
     }
     return NextResponse.json({ session: publicView(s) });

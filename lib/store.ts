@@ -28,7 +28,9 @@ export interface Message {
 }
 export interface SessionImage {
   n: number;
+  /** generation prompt ("" for uploads) */
   prompt: string;
+  source?: "generated" | "upload";
   withClawd: boolean;
   status: "pending" | "ready" | "refused" | "failed";
   note?: string;

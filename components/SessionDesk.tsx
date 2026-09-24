@@ -9,6 +9,18 @@ import { Thinking } from "./Thinking";
 
 type View = Omit<Session, "tokenHash">;
 
+/** Re-encode any image as a ≤1600px JPEG in the browser. That also strips
+ * EXIF (GPS, camera) and anything else riding along in the file. */
+async function toJpeg(file: File): Promise<string> {
+  const bmp = await createImageBitmap(file);
+  const scale = Math.min(1, 1600 / Math.max(bmp.width, bmp.height));
+  const c = document.createElement("canvas");
+  c.width = Math.round(bmp.width * scale);
+  c.height = Math.round(bmp.height * scale);
+  c.getContext("2d")!.drawImage(bmp, 0, 0, c.width, c.height);
+  return c.toDataURL("image/jpeg", 0.88);
+}
+
 function weightedLength(text: string): number {
   const urls = text.match(/https?:\/\/\S+/g) || [];
   return [...text.replace(/https?:\/\/\S+/g, "")].length + urls.length * 23;
@@ -23,6 +35,8 @@ export function SessionDesk({ id }: { id: string }) {
   const [imgPrompt, setImgPrompt] = useState("");
   const [withClawd, setWithClawd] = useState(true);
   const [confirming, setConfirming] = useState(false);
+  const [dragging, setDragging] = useState(false);
+  const fileInput = useRef<HTMLInputElement>(null);
   const token = useRef<string | null>(null);
   const bottom = useRef<HTMLDivElement>(null);
   const seen = useRef(0);
@@ -73,6 +87,15 @@ export function SessionDesk({ id }: { id: string }) {
     if (!r.ok) { setErr(d.error || "that didn't work"); return false; }
     setS(d.session);
     return true;
+  }
+
+  async function upload(file: File | undefined) {
+    if (!file || !file.type.startsWith("image/")) { setErr("that's not an image"); return; }
+    try {
+      await act({ action: "upload", jpeg: await toJpeg(file) });
+    } catch {
+      setErr("couldn't read that image");
+    }
   }
 
   if (gone) {
@@ -231,7 +254,12 @@ export function SessionDesk({ id }: { id: string }) {
 
           {/* images */}
           {!posted && !readOnly && (
-            <div className="border border-line bg-paper text-ink shadow-xl">
+            <div
+              className={`border bg-paper text-ink shadow-xl ${dragging ? "border-lobster border-2" : "border-line"}`}
+              onDragOver={e => { e.preventDefault(); setDragging(true); }}
+              onDragLeave={() => setDragging(false)}
+              onDrop={e => { e.preventDefault(); setDragging(false); if (!s.pending && s.images.length < MAX_IMAGES) upload(e.dataTransfer.files[0]); }}
+            >
               <div className="border-b border-line bg-paper-dark px-6 py-3 flex justify-between items-baseline">
                 <span className="smallcaps text-sm font-semibold text-ink-soft">Image</span>
                 <span className="font-mono text-xs text-ink-soft">{s.images.length}/{MAX_IMAGES}</span>
@@ -250,7 +278,7 @@ export function SessionDesk({ id }: { id: string }) {
                         {img.status === "ready" ? (
                           // eslint-disable-next-line @next/next/no-img-element
                           <img src={`/api/session/${id}/image/${img.n}`} alt={img.prompt} className="w-full h-full object-cover" />
-                        ) : img.status === "pending" ? <Thinking label="painting" since={s.pending?.type === "image" ? s.pending.since : undefined} /> : img.note || img.status}
+                        ) : img.status === "pending" ? <Thinking label={img.source === "upload" ? "checking" : "painting"} since={s.pending?.type === "image" ? s.pending.since : undefined} /> : img.note || img.status}
                         {s.attachImage === img.n && <span className="absolute top-1 right-1 bg-lobster text-paper px-1.5 smallcaps">attached</span>}
                       </button>
                     ))}
@@ -272,11 +300,25 @@ export function SessionDesk({ id }: { id: string }) {
                         feature clawd
                       </label>
                       <button
+                        onClick={() => fileInput.current?.click()}
+                        disabled={!!s.pending || expired}
+                        className="ml-auto text-sm underline text-ink-soft hover:text-ink disabled:opacity-40"
+                      >
+                        or upload
+                      </button>
+                      <input
+                        ref={fileInput}
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={e => { upload(e.target.files?.[0]); e.target.value = ""; }}
+                      />
+                      <button
                         onClick={() => act({ action: "image", prompt: imgPrompt, withClawd })}
                         disabled={!imgPrompt.trim() || !!s.pending || expired}
                         className="px-4 py-2 bg-ink text-paper smallcaps text-sm font-semibold hover:bg-lobster disabled:opacity-40"
                       >
-                        {s.pending?.type === "image" ? <Thinking label="painting" /> : "Generate"}
+                        {s.pending?.type === "image" ? <Thinking label="working" /> : "Generate"}
                       </button>
                     </div>
                   </>
