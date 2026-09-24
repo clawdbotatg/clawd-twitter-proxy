@@ -1,5 +1,7 @@
 "use client";
 
+import { Addr } from "@/components/Addr";
+
 import { useState } from "react";
 import { useAccount, useConnect, useDisconnect } from "wagmi";
 
@@ -16,7 +18,7 @@ export function ConnectButton({ className = "" }: { className?: string }) {
         className={`font-mono text-sm px-4 py-2 border border-line bg-paper-dark text-ink hover:bg-paper transition-colors ${className}`}
         title="Disconnect"
       >
-        {address.slice(0, 6)}…{address.slice(-4)}
+        <Addr address={address} size="sm" disableAddressLink />
       </button>
     );
   }

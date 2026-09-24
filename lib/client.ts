@@ -56,6 +56,3 @@ export function ago(ms: number): string {
   return `${Math.floor(h / 24)}d`;
 }
 
-export function shortAddr(a: string): string {
-  return `${a.slice(0, 6)}…${a.slice(-4)}`;
-}

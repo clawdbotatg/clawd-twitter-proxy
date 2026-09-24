@@ -347,3 +347,14 @@ export async function leaderboard() {
     { tweet_id: string; wallet: string; url: string; text: string; posted_at: string; score: number; metrics: TweetMetrics | null; checks: number }[];
   return { creators, tweets: tweets.map(t => ({ ...t, posted_at: Number(t.posted_at) })) };
 }
+
+/** One creator's total and per-session scores (public, like the leaderboard). */
+export async function creatorStats(wallet: string) {
+  const rows = (await db()`SELECT session_id, score::float AS score FROM tweet_scores WHERE wallet = ${wallet.toLowerCase()}`) as
+    { session_id: string; score: number }[];
+  return {
+    score: Math.round(rows.reduce((a, r) => a + r.score, 0) * 10) / 10,
+    tweets: rows.length,
+    bySession: Object.fromEntries(rows.map(r => [r.session_id, r.score])),
+  };
+}

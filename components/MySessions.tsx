@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useAccount, useSignMessage } from "wagmi";
+import { useCreator } from "./useCreator";
 import { LocalSession, ago, localSessions, rememberSession } from "@/lib/client";
 import { CV_SIGN_MESSAGE, getCachedCVSignature, setCachedCVSignature } from "@/lib/conviction";
 
@@ -12,6 +13,7 @@ export function MySessions() {
   const { signMessageAsync } = useSignMessage();
   const [list, setList] = useState<LocalSession[]>([]);
   const [msg, setMsg] = useState<string | null>(null);
+  const creator = useCreator(address);
 
   useEffect(() => setList(localSessions()), []);
 
@@ -48,6 +50,7 @@ export function MySessions() {
           {list.slice(0, 6).map(s => (
             <Link key={s.id} href={`/s/${s.id}`} className="font-mono px-2 py-1 border border-lobster-line hover:border-paper">
               {s.id.slice(0, 6)} · {ago(Date.now() - s.createdAt)} ago
+              {creator?.bySession[s.id] !== undefined && <span className="text-gold-bright"> · {creator.bySession[s.id]} pts</span>}
             </Link>
           ))}
         </div>

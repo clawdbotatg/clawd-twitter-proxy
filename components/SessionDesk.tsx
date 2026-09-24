@@ -1,11 +1,15 @@
 "use client";
 
+import { Addr } from "@/components/Addr";
+
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Session } from "@/lib/store";
-import { compactCV, sessionToken, shortAddr } from "@/lib/client";
+import { compactCV, sessionToken } from "@/lib/client";
 import { FINAL_MS, MAX_IMAGES, MAX_TURNS } from "@/lib/limits";
 import { Thinking } from "./Thinking";
+import { WalletBar } from "./WalletBar";
+import { useCreator } from "./useCreator";
 
 type View = Omit<Session, "tokenHash">;
 
@@ -43,6 +47,7 @@ export function SessionDesk({ id }: { id: string }) {
   const [withClawd, setWithClawd] = useState(true);
   const [confirming, setConfirming] = useState(false);
   const [dragging, setDragging] = useState(false);
+  const creator = useCreator(s?.status === "posted" ? s.wallet : undefined);
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 1000);
@@ -175,9 +180,15 @@ export function SessionDesk({ id }: { id: string }) {
     <Shell>
       <div className="flex flex-wrap items-baseline justify-between gap-4 mb-8">
         <div>
-          <p className="smallcaps text-sm text-gold-bright">{shortAddr(s.wallet)} · {compactCV(s.pricePaid)} CV</p>
+          <div className="flex items-center gap-3 text-sm text-gold-bright">
+            <span className="bg-paper text-ink px-2 py-1"><Addr address={s.wallet} size="sm" /></span>
+            <span className="smallcaps">· {compactCV(s.pricePaid)} CV</span>
+          </div>
           <h1 className="font-display text-4xl sm:text-5xl font-semibold tracking-tight mt-1">
             {posted ? "Posted." : "Tweet as clawd."}
+            {posted && creator?.bySession[id] !== undefined && (
+              <span className="ml-4 font-mono text-2xl text-gold-bright align-middle">{creator.bySession[id]} pts</span>
+            )}
           </h1>
         </div>
         {!posted && !readOnly && (
@@ -398,7 +409,7 @@ function Shell({ children }: { children: React.ReactNode }) {
         <Link href="/" className="font-display text-lg font-semibold tracking-tight">
           burn<span className="text-gold-bright">·</span>to<span className="text-gold-bright">·</span>tweet
         </Link>
-        <a href="https://x.com/clawdbotatg" target="_blank" rel="noopener noreferrer" className="smallcaps text-sm hover:text-gold-bright">@clawdbotatg</a>
+        <WalletBar />
       </header>
       <section className="max-w-6xl mx-auto px-6 py-12">{children}</section>
     </main>

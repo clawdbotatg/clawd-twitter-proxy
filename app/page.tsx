@@ -1,4 +1,4 @@
-import { ConnectButton } from "@/components/ConnectButton";
+import { WalletBar } from "@/components/WalletBar";
 import { Desk } from "@/components/Desk";
 import { MySessions } from "@/components/MySessions";
 
@@ -9,7 +9,7 @@ export default function Home() {
         <span className="font-display text-lg font-semibold tracking-tight">
           burn<span className="text-gold-bright">·</span>to<span className="text-gold-bright">·</span>tweet
         </span>
-        <ConnectButton />
+        <WalletBar />
       </header>
 
       <section className="max-w-6xl mx-auto px-6 pt-6 pb-12 sm:pt-8 grid md:grid-cols-[1fr_auto] gap-10 items-center">
