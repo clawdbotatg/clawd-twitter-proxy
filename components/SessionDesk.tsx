@@ -299,6 +299,7 @@ export function SessionDesk({ id }: { id: string }) {
                     {s.pending?.type === "post" ? <Thinking label="safety check, then posting" since={s.pending.since} /> : "Tweet"}
                   </button>
                 )}
+                {s.notice && !s.pending && <p className="text-sm text-seal">{s.notice}</p>}
               </div>
             )}
           </div>
@@ -378,8 +379,8 @@ export function SessionDesk({ id }: { id: string }) {
             </div>
           )}
 
-          {(err || s.notice) && (
-            <p className="text-sm text-paper border border-paper/40 bg-lobster-deep px-4 py-3">{err || s.notice}</p>
+          {err && (
+            <p className="text-sm text-paper border border-paper/40 bg-lobster-deep px-4 py-3">{err}</p>
           )}
           
         </div>
