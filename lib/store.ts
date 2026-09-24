@@ -260,3 +260,34 @@ export async function getFeed(n = 20): Promise<FeedItem[]> {
   const rows = (await db()`SELECT item FROM feed ORDER BY seq DESC LIMIT ${n}`) as { item: FeedItem }[];
   return rows.map(r => r.item);
 }
+
+// ---------- worker status + notifications ----------
+
+/** How long without a poll before we call the worker offline (idle poll is 20s). */
+export const WORKER_STALE_MS = 2 * 60 * 1000;
+
+export async function setWorkerStatus(paused: boolean): Promise<void> {
+  await db()`INSERT INTO worker_status (id, seen_at, paused) VALUES (1, ${Date.now()}, ${paused})
+             ON CONFLICT (id) DO UPDATE SET seen_at = EXCLUDED.seen_at, paused = EXCLUDED.paused`;
+}
+
+/** Is the desk open for new purchases? */
+export async function deskStatus(): Promise<{ open: boolean; reason: string | null }> {
+  const rows = (await db()`SELECT seen_at, paused FROM worker_status WHERE id = 1`) as { seen_at: string; paused: boolean }[];
+  const r = rows[0];
+  if (!r || Date.now() - Number(r.seen_at) > WORKER_STALE_MS) return { open: false, reason: "clawd is offline right now" };
+  if (r.paused) return { open: false, reason: "the desk is closed for now" };
+  return { open: true, reason: null };
+}
+
+export async function pushEvent(text: string): Promise<void> {
+  await db()`INSERT INTO events (text) VALUES (${text})`;
+}
+
+/** Remove and return pending notifications (the worker sends them). */
+export async function takeEvents(): Promise<string[]> {
+  const rows = (await db()`DELETE FROM events WHERE seq IN (
+                             SELECT seq FROM events ORDER BY seq LIMIT 10 FOR UPDATE SKIP LOCKED
+                           ) RETURNING seq, text`) as { seq: string; text: string }[];
+  return rows.sort((a, b) => Number(a.seq) - Number(b.seq)).map(r => r.text);
+}

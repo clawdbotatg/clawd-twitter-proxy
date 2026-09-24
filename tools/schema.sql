@@ -41,3 +41,18 @@ CREATE TABLE IF NOT EXISTS hot (
   id    int PRIMARY KEY DEFAULT 1 CHECK (id = 1),
   until bigint NOT NULL
 );
+
+-- Last time the worker polled, and whether Austin paused the desk. No
+-- purchases unless the worker is alive and not paused.
+CREATE TABLE IF NOT EXISTS worker_status (
+  id      int PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+  seen_at bigint NOT NULL,
+  paused  boolean NOT NULL DEFAULT false
+);
+
+-- Notifications for Austin (Telegram). The site has no Telegram key, so the
+-- worker drains these on each poll and sends them.
+CREATE TABLE IF NOT EXISTS events (
+  seq  bigserial PRIMARY KEY,
+  text text NOT NULL
+);

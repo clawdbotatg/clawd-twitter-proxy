@@ -12,6 +12,8 @@ export interface PriceInfo {
   floorAt: number;
   highestCV: number | null;
   lastTweet: FeedItem | null;
+  open: boolean;
+  closedReason: string | null;
   /** server clock minus ours, so the local tick agrees with the server */
   skew: number;
 }

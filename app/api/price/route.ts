@@ -1,12 +1,12 @@
 import { NextResponse } from "next/server";
 import { FLOOR_CV, floorAt, priceAt } from "@/lib/price";
-import { getFeed, getPriceState } from "@/lib/store";
+import { deskStatus, getFeed, getPriceState } from "@/lib/store";
 import { fetchHighestCV } from "@/lib/larv";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
-  const [state, highest, feed] = await Promise.all([getPriceState(), fetchHighestCV(), getFeed(1)]);
+  const [state, highest, feed, desk] = await Promise.all([getPriceState(), fetchHighestCV(), getFeed(1), deskStatus()]);
   const now = Date.now();
   return NextResponse.json({
     price: priceAt(state, now),
@@ -16,6 +16,8 @@ export async function GET() {
     floorAt: floorAt(state),
     highestCV: highest,
     lastTweet: feed[0] ?? null,
+    open: desk.open,
+    closedReason: desk.reason,
     now,
   });
 }

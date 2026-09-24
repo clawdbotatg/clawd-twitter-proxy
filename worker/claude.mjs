@@ -44,7 +44,8 @@ export function childEnv() {
   return env;
 }
 
-export function claudeArgs(systemPromptFile) {
+export function claudeArgs(systemPromptFile, appendFile) {
+  const extra = appendFile ? ["--append-system-prompt-file", appendFile] : [];
   return [
     "-p",
     "--model", MODEL,
@@ -55,13 +56,14 @@ export function claudeArgs(systemPromptFile) {
     "--exclude-dynamic-system-prompt-sections",
     "--system-prompt-file", systemPromptFile,
     "--output-format", "json",
+    ...extra,
   ];
 }
 
 /** Run one prompt against a system-prompt file; resolves to the text result. */
-export function runClaude(systemPromptFile, prompt) {
+export function runClaude(systemPromptFile, prompt, appendFile) {
   return new Promise((resolve, reject) => {
-    const child = spawn(CLAUDE_BIN, claudeArgs(systemPromptFile), {
+    const child = spawn(CLAUDE_BIN, claudeArgs(systemPromptFile, appendFile), {
       cwd: SANDBOX,
       env: childEnv(),
       stdio: ["pipe", "pipe", "pipe"],

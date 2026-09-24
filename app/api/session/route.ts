@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { priceAt } from "@/lib/price";
-import { createSession, getPriceState, saveSession } from "@/lib/store";
+import { createSession, deskStatus, getPriceState, pushEvent, saveSession } from "@/lib/store";
 import { spendCV, verifyCVSignature } from "@/lib/larv";
 
 export const dynamic = "force-dynamic";
@@ -16,6 +16,10 @@ export async function POST(req: NextRequest) {
   if (!(await verifyCVSignature(wallet, signature))) {
     return NextResponse.json({ error: "signature verification failed", badSignature: true }, { status: 401 });
   }
+
+  // Never take CV when nobody's there to serve the session.
+  const desk = await deskStatus();
+  if (!desk.open) return NextResponse.json({ error: `${desk.reason} — no CV was spent, try again later` }, { status: 503 });
 
   const price = priceAt(await getPriceState(), Date.now());
   if (typeof maxPrice !== "number" || price > maxPrice) {
@@ -35,5 +39,6 @@ export async function POST(req: NextRequest) {
   }
   session.status = "active";
   await saveSession(session);
+  await pushEvent(`🔥 ${wallet.slice(0, 6)}…${wallet.slice(-4)} burned ${price.toLocaleString("en-US")} CV — session ${session.id.slice(0, 6)} open\nhttps://x.larv.ai`);
   return NextResponse.json({ id: session.id, token, pricePaid: price, newBalance: spent.newBalance });
 }

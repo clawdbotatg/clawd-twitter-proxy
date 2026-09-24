@@ -23,7 +23,8 @@ export function BuyCard() {
   const { address } = useAccount();
   const { signMessageAsync } = useSignMessage();
   const { account, refresh } = useConviction(address);
-  const { live, reload } = usePrice();
+  const { info, live, reload } = usePrice();
+  const closed = info ? !info.open : false;
   const [step, setStep] = useState<Step>("idle");
   const [error, setError] = useState<string | null>(null);
   const [mounted, setMounted] = useState(false);
@@ -101,10 +102,16 @@ export function BuyCard() {
           </p>
         )}
 
+        {closed && (
+          <p className="text-sm text-seal border border-seal/40 bg-seal/5 px-4 py-3">
+            {info?.closedReason ?? "the desk is closed"}. Purchases are paused, and no CV will be taken.
+          </p>
+        )}
+
         {mounted && address && (
           <button
             onClick={buy}
-            disabled={busy || live === null || insufficient}
+            disabled={busy || live === null || insufficient || closed}
             className="w-full py-4 bg-ink text-paper smallcaps text-base font-semibold tracking-wider hover:bg-lobster transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
           >
             {step === "signing" && "Sign the conviction note in your wallet…"}

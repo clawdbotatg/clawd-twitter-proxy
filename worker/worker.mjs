@@ -14,6 +14,7 @@ import { guardTweet } from "./guard.mjs";
 import { reviewImagePrompt, reviewTweet } from "./safety.mjs";
 import { generateImage } from "./image.mjs";
 import { postTweet } from "./twitter.mjs";
+import { recordInPostedLog, telegram } from "./clawdtwitter.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const STATE = join(HERE, "state");
@@ -65,6 +66,12 @@ function recordPost(sessionId, entry) {
   writeFileSync(LEDGER, JSON.stringify(l, null, 2));
 }
 
+// Austin's stop switch: this file exists → the site takes no new purchases.
+// Paid sessions still get served. The approval daemon creates or removes it
+// when he says "stop x.larv.ai" / "resume x.larv.ai" on Telegram.
+export const PAUSE_FILE = join(STATE, "PAUSED");
+const short = w => `${w.slice(0, 6)}…${w.slice(-4)}`;
+
 async function handle({ job, session, imageB64, maxTurns }) {
   const base = { jobId: job.jobId, sessionId: job.sessionId, type: job.type };
 
@@ -83,7 +90,10 @@ async function handle({ job, session, imageB64, maxTurns }) {
     const img = session.images[job.n];
     try {
       const v = await reviewImagePrompt(img.prompt, img.withClawd);
-      if (!v.allow) return report({ ...base, n: job.n, ok: false, refused: true, note: `image refused: ${v.reason}` });
+      if (!v.allow) {
+        telegram(`🛡️ image blocked for ${short(session.wallet)}: ${v.reason}\nprompt: ${img.prompt.slice(0, 200)}`);
+        return report({ ...base, n: job.n, ok: false, refused: true, note: `image refused: ${v.reason}` });
+      }
       const b64 = await generateImage(img.prompt, img.withClawd);
       log("image", session.id, job.n, `${Math.round(b64.length / 1365)}KB`);
       return report({ ...base, n: job.n, ok: true, b64 });
@@ -111,6 +121,7 @@ async function handle({ job, session, imageB64, maxTurns }) {
     }
     if (!v.allow) {
       log("post BLOCKED", session.id, v.reason);
+      telegram(`🛡️ tweet blocked for ${short(session.wallet)}: ${v.reason}\n\n${g.text}`);
       return report({ ...base, ok: false, note: `blocked by the safety check: ${v.reason} — ask clawd for a different take.` });
     }
 
@@ -118,6 +129,9 @@ async function handle({ job, session, imageB64, maxTurns }) {
       const t = await postTweet(g.text, img ? imageB64 : null);
       recordPost(session.id, { id: t.id, url: t.url, text: g.text, wallet: session.wallet, at: Date.now() });
       log("POSTED", session.id, t.url);
+      const dry = process.env.DRY_RUN_POST === "1";
+      if (!dry) recordInPostedLog({ id: t.id, url: t.url, text: g.text, wallet: session.wallet, cv: session.pricePaid });
+      telegram(`${dry ? "[dry run] " : ""}🦞 ${short(session.wallet)} posted (${Number(session.pricePaid).toLocaleString("en-US")} CV)\n${t.url}`);
       return report({ ...base, ok: true, tweetId: t.id, url: t.url, text: g.text });
     } catch (e) {
       log("post failed", session.id, e.message);
@@ -136,12 +150,13 @@ async function poll() {
     if (running >= CONCURRENCY) { await sleep(500); continue; }
     let claimed;
     try {
-      claimed = await api("/api/worker/claim");
+      claimed = await api("/api/worker/claim", { paused: existsSync(PAUSE_FILE) });
     } catch (e) {
       log("claim failed", e.message);
       await sleep(10_000);
       continue;
     }
+    for (const e of claimed.events || []) telegram(e);
     if (!claimed.job) { await sleep(claimed.hot ? 1000 : IDLE_POLL_MS); continue; }
     running++;
     handle(claimed)
