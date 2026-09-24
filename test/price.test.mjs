@@ -15,8 +15,9 @@ test("first hour only halves (10% → 5%), then falls to the floor over 8h and r
   assert.ok(priceAt(s, s.resetAt + HOLD_MS / 2) > 900_000_000, "still expensive mid-hour");
   assert.equal(priceAt(s, s.resetAt + HOLD_MS + FALL_MS), FLOOR_CV);
   assert.equal(priceAt(s, s.resetAt + 3 * DECAY_MS), FLOOR_CV);
-  // after the hour it drops fast: well under half of the hour-mark price 90 min later
-  assert.ok(priceAt(s, s.resetAt + HOLD_MS + 90 * 60 * 1000) < 330_000_000);
+  // after the hour: a steady exponential fall — geometric midpoint halfway down
+  const mid = priceAt(s, s.resetAt + HOLD_MS + FALL_MS / 2);
+  assert.ok(Math.abs(mid - Math.sqrt(660_000_000 * FLOOR_CV)) < 2);
 });
 
 test("a low reset price never dips under the floor", () => {
