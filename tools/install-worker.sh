@@ -24,5 +24,10 @@ cat > "$PLIST" <<PL
 PL
 # bootout sends SIGTERM; the worker finishes in-flight jobs (≤5 min) first.
 launchctl bootout "gui/$(id -u)/$LABEL" 2>/dev/null || true
+# bootout returns before a draining worker exits; bootstrap fails until it's gone.
+for i in $(seq 1 330); do
+  launchctl print "gui/$(id -u)/$LABEL" >/dev/null 2>&1 || break
+  sleep 1
+done
 launchctl bootstrap "gui/$(id -u)" "$PLIST"
 echo "worker running: tail -f $ROOT/worker/state/worker.log"
