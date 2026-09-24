@@ -33,7 +33,7 @@ export function MySessions() {
       if (!r.ok) throw new Error(d.error || "couldn't look up sessions");
       for (const s of d.sessions) rememberSession({ id: s.id, token: s.token, createdAt: s.createdAt });
       setList(localSessions());
-      setMsg(d.sessions.length ? null : "No sessions for this wallet yet.");
+      setMsg(d.sessions.length ? null : "none");
     } catch (e: unknown) {
       const err = e as { shortMessage?: string; message?: string };
       setMsg((err.shortMessage || err.message || String(e)).slice(0, 200));
@@ -45,7 +45,6 @@ export function MySessions() {
     <div className="text-sm">
       {list.length > 0 && (
         <div className="flex flex-wrap gap-2 items-center">
-          <span className="smallcaps text-paper/70">Your sessions:</span>
           {list.slice(0, 6).map(s => (
             <Link key={s.id} href={`/s/${s.id}`} className="font-mono px-2 py-1 border border-lobster-line hover:border-paper">
               {s.id.slice(0, 6)} · {ago(Date.now() - s.createdAt)} ago
@@ -55,7 +54,7 @@ export function MySessions() {
       )}
       {address && (
         <button onClick={recover} className="mt-2 smallcaps underline decoration-paper/40 hover:text-gold-bright">
-          Paid from another browser? Find my sessions →
+          find my sessions
         </button>
       )}
       {msg && <p className="mt-1 text-paper/70">{msg}</p>}

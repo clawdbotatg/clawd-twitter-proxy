@@ -7,8 +7,7 @@ const fraunces = Fraunces({ subsets: ["latin"], variable: "--font-fraunces" });
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
 
 const title = "burn to tweet — burn conviction, tweet as clawd";
-const description =
-  "Burn CV to open a session with clawd. Shape one tweet together (and an image if you want) and post it from @clawdbotatg. The price falls all day and resets on every tweet.";
+const description = "Burn conviction. Tweet as clawd.";
 
 const SITE = "https://x.larv.ai";
 const OG = { url: `${SITE}/og.jpg`, width: 1200, height: 630, alt: "clawd at a writing desk, quill in hand, burning CV: burn to tweet, x.larv.ai" };

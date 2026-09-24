@@ -79,14 +79,14 @@ export function SessionDesk({ id }: { id: string }) {
       <Shell>
         <p className="text-paper/80">
           {gone === "not your session"
-            ? "This session belongs to another browser. If it's yours, go back and use “Find my sessions” with the wallet that paid."
+            ? "Not your session. Paid from another browser? Use “find my sessions” on the home page."
             : "No such session."}
         </p>
-        <Link href="/" className="mt-4 inline-block smallcaps underline">← back to the desk</Link>
+        <Link href="/" className="mt-4 inline-block smallcaps underline">← back</Link>
       </Shell>
     );
   }
-  if (!s) return <Shell><p className="text-paper/70">Opening the session…</p></Shell>;
+  if (!s) return <Shell><p className="text-paper/70">…</p></Shell>;
 
   const turnsLeft = MAX_TURNS - s.turns;
   const canTalk = s.status === "active" && !readOnly && !s.pending && turnsLeft > 0;
@@ -98,15 +98,15 @@ export function SessionDesk({ id }: { id: string }) {
     <Shell>
       <div className="flex flex-wrap items-baseline justify-between gap-4 mb-8">
         <div>
-          <p className="smallcaps text-sm text-gold-bright">Session {id.slice(0, 6)} · {shortAddr(s.wallet)} · {compactCV(s.pricePaid)} CV burned</p>
+          <p className="smallcaps text-sm text-gold-bright">{shortAddr(s.wallet)} · {compactCV(s.pricePaid)} CV</p>
           <h1 className="font-display text-4xl sm:text-5xl font-semibold tracking-tight mt-1">
-            {posted ? "It's out there." : "Tweet as clawd."}
+            {posted ? "Posted." : "Tweet as clawd."}
           </h1>
         </div>
         {!posted && (
           <div className="sm:text-right text-sm">
             <div className="font-display text-3xl tabular">{turnsLeft}</div>
-            <div className="smallcaps text-paper/70">turns left of {MAX_TURNS}</div>
+            <div className="smallcaps text-paper/70">messages left</div>
           </div>
         )}
       </div>
@@ -114,15 +114,8 @@ export function SessionDesk({ id }: { id: string }) {
       <div className="grid lg:grid-cols-[1fr_420px] gap-8 items-start">
         {/* conversation */}
         <div className="border border-line bg-paper text-ink shadow-xl flex flex-col min-h-[28rem]">
-          <div className="border-b border-line bg-paper-dark px-6 py-3 smallcaps text-sm font-semibold text-ink-soft">Correspondence</div>
           <div className="flex-1 p-6 space-y-5 overflow-y-auto max-h-[60vh]">
-            {s.messages.length === 0 && !readOnly && (
-              <p className="text-ink-soft text-sm leading-relaxed">
-                Tell clawd what the tweet is about: a take, an announcement, a joke, a shoutout. Give it the facts,
-                because it can&apos;t look anything up. It will draft on the first reply, and you can refine from there.
-              </p>
-            )}
-            {readOnly && <p className="text-ink-soft text-sm">The conversation behind this tweet is private to whoever commissioned it.</p>}
+            {readOnly && <p className="text-ink-soft text-sm">Conversation is private.</p>}
             {s.messages.map((m, i) => (
               <div key={i} className={m.role === "user" ? "pl-8" : "pr-8"}>
                 <div className="smallcaps text-xs text-ink-soft mb-1">{m.role === "user" ? "you" : "clawd 🦞"}</div>
@@ -131,7 +124,7 @@ export function SessionDesk({ id }: { id: string }) {
                 </div>
               </div>
             ))}
-            {s.pending?.type === "turn" && <p className="text-ink-soft text-sm italic">clawd is writing…</p>}
+            {s.pending?.type === "turn" && <p className="text-ink-soft text-sm italic">…</p>}
             <div ref={bottom} />
           </div>
           {!posted && !readOnly && (
@@ -148,7 +141,7 @@ export function SessionDesk({ id }: { id: string }) {
                 onKeyDown={e => {
                   if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); (e.currentTarget.form as HTMLFormElement).requestSubmit(); }
                 }}
-                placeholder={turnsLeft > 0 ? "what should clawd tweet?" : "out of turns. Tweet the draft or let it go"}
+                placeholder={turnsLeft > 0 ? "what should clawd tweet?" : "out of messages"}
                 disabled={!canTalk || expired}
                 maxLength={2000}
                 rows={2}
@@ -169,7 +162,7 @@ export function SessionDesk({ id }: { id: string }) {
         <div className="space-y-6">
           <div className="border border-line bg-paper text-ink shadow-xl">
             <div className="border-b border-line bg-paper-dark px-6 py-3 flex justify-between items-baseline">
-              <span className="smallcaps text-sm font-semibold text-ink-soft">{posted ? "Posted" : "The draft"}</span>
+              <span className="smallcaps text-sm font-semibold text-ink-soft">{posted ? "Posted" : "Draft"}</span>
               {s.draft && !posted && <span className="font-mono text-xs text-ink-soft tabular">{weightedLength(s.draft)}/280</span>}
             </div>
             <div className="p-5">
@@ -184,7 +177,7 @@ export function SessionDesk({ id }: { id: string }) {
               {(posted ? s.tweet?.text : s.draft) ? (
                 <p className="whitespace-pre-wrap text-[15px] leading-snug">{posted ? s.tweet!.text : s.draft}</p>
               ) : (
-                <p className="text-ink-soft text-sm italic">No draft yet.</p>
+                <p className="text-ink-soft text-sm italic">—</p>
               )}
               {attached && attached.status === "ready" && (
                 // eslint-disable-next-line @next/next/no-img-element
@@ -204,15 +197,15 @@ export function SessionDesk({ id }: { id: string }) {
               <div className="px-5 pb-5 space-y-3">
                 {confirming ? (
                   <div className="border border-seal/50 bg-seal/5 p-3 text-sm space-y-3">
-                    <p>Post this{attached ? " with the image" : ""} from @clawdbotatg? It passes a safety review first. Once it&apos;s out, the session closes and the price resets.</p>
+                    <p>Post this{attached ? " with the image" : ""}? No undo.</p>
                     <div className="flex gap-2">
                       <button
                         onClick={async () => { setConfirming(false); await act({ action: "tweet" }); }}
                         className="flex-1 py-2 bg-ink text-paper smallcaps font-semibold hover:bg-lobster"
                       >
-                        Yes, tweet it
+                        Tweet
                       </button>
-                      <button onClick={() => setConfirming(false)} className="px-4 py-2 border border-line smallcaps">Not yet</button>
+                      <button onClick={() => setConfirming(false)} className="px-4 py-2 border border-line smallcaps">Cancel</button>
                     </div>
                   </div>
                 ) : (
@@ -221,7 +214,7 @@ export function SessionDesk({ id }: { id: string }) {
                     disabled={!s.draft || !!s.pending || expired}
                     className="w-full py-4 bg-ink text-paper smallcaps text-base font-semibold tracking-wider hover:bg-lobster transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                   >
-                    {s.pending?.type === "post" ? "Safety review, then posting…" : "Tweet it 🦞"}
+                    {s.pending?.type === "post" ? "Posting…" : "Tweet"}
                   </button>
                 )}
               </div>
@@ -232,7 +225,7 @@ export function SessionDesk({ id }: { id: string }) {
           {!posted && !readOnly && (
             <div className="border border-line bg-paper text-ink shadow-xl">
               <div className="border-b border-line bg-paper-dark px-6 py-3 flex justify-between items-baseline">
-                <span className="smallcaps text-sm font-semibold text-ink-soft">Illustration (optional)</span>
+                <span className="smallcaps text-sm font-semibold text-ink-soft">Image</span>
                 <span className="font-mono text-xs text-ink-soft">{s.images.length}/{MAX_IMAGES}</span>
               </div>
               <div className="p-5 space-y-3">
@@ -249,7 +242,7 @@ export function SessionDesk({ id }: { id: string }) {
                         {img.status === "ready" ? (
                           // eslint-disable-next-line @next/next/no-img-element
                           <img src={`/api/session/${id}/image/${img.n}`} alt={img.prompt} className="w-full h-full object-cover" />
-                        ) : img.status === "pending" ? "painting…" : img.note || img.status}
+                        ) : img.status === "pending" ? "…" : img.note || img.status}
                         {s.attachImage === img.n && <span className="absolute top-1 right-1 bg-lobster text-paper px-1.5 smallcaps">attached</span>}
                       </button>
                     ))}
@@ -275,10 +268,9 @@ export function SessionDesk({ id }: { id: string }) {
                         disabled={!imgPrompt.trim() || !!s.pending || expired}
                         className="px-4 py-2 bg-ink text-paper smallcaps text-sm font-semibold hover:bg-lobster disabled:opacity-40"
                       >
-                        {s.pending?.type === "image" ? "Painting…" : "Generate"}
+                        {s.pending?.type === "image" ? "…" : "Generate"}
                       </button>
                     </div>
-                    <p className="text-xs text-ink-soft/70">Images take up to a minute. Tap one to attach it or detach it. Images don&apos;t use turns.</p>
                   </>
                 )}
               </div>
@@ -288,7 +280,7 @@ export function SessionDesk({ id }: { id: string }) {
           {(err || s.notice) && (
             <p className="text-sm text-paper border border-paper/40 bg-lobster-deep px-4 py-3">{err || s.notice}</p>
           )}
-          {expired && <p className="text-sm text-paper/80">This session expired after 24 hours.</p>}
+          {expired && <p className="text-sm text-paper/80">Expired.</p>}
         </div>
       </div>
     </Shell>

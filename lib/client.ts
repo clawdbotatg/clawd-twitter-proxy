@@ -39,7 +39,8 @@ export function compactCV(n: number | null | undefined): string {
   for (const [v, s] of units) {
     if (n >= v) {
       const x = n / v;
-      return `${x >= 100 ? x.toFixed(0) : x >= 10 ? x.toFixed(1) : x.toFixed(2)}${s}`;
+      const str = x >= 100 ? x.toFixed(0) : x >= 10 ? x.toFixed(1) : x.toFixed(2);
+      return `${str.includes(".") ? str.replace(/\.?0+$/, "") : str}${s}`;
     }
   }
   return Math.floor(n).toLocaleString("en-US");
