@@ -130,7 +130,9 @@ async function handle({ job, session, imageB64, maxTurns }) {
       recordPost(session.id, { id: t.id, url: t.url, text: g.text, wallet: session.wallet, at: Date.now() });
       log("POSTED", session.id, t.url);
       const dry = process.env.DRY_RUN_POST === "1";
-      if (!dry) recordInPostedLog({ id: t.id, url: t.url, text: g.text, wallet: session.wallet, cv: session.pricePaid });
+      // No tweet text here: clawd-twitter's fully-tooled agents read this log, and the
+      // text was steered by a stranger. Ids and numbers only.
+      if (!dry) recordInPostedLog({ id: t.id, url: t.url, wallet: session.wallet, cv: session.pricePaid });
       telegram(`${dry ? "[dry run] " : ""}🦞 ${short(session.wallet)} posted (${Number(session.pricePaid).toLocaleString("en-US")} CV)\n${t.url}`);
       return report({ ...base, ok: true, tweetId: t.id, url: t.url, text: g.text });
     } catch (e) {

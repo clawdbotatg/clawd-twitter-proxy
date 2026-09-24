@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { Session } from "@/lib/store";
 import { compactCV, sessionToken, shortAddr } from "@/lib/client";
 import { MAX_IMAGES, MAX_TURNS } from "@/lib/limits";
+import { Thinking } from "./Thinking";
 
 type View = Omit<Session, "tokenHash">;
 
@@ -124,7 +125,14 @@ export function SessionDesk({ id }: { id: string }) {
                 </div>
               </div>
             ))}
-            {s.pending?.type === "turn" && <p className="text-ink-soft text-sm italic">…</p>}
+            {s.pending?.type === "turn" && (
+              <div className="pr-8">
+                <div className="smallcaps text-xs text-ink-soft mb-1">clawd 🦞</div>
+                <div className="px-4 py-3 border bg-paper-dark border-line text-ink-soft text-sm">
+                  <Thinking label="clawd is thinking" since={s.pending.since} />
+                </div>
+              </div>
+            )}
             <div ref={bottom} />
           </div>
           {!posted && !readOnly && (
@@ -214,7 +222,7 @@ export function SessionDesk({ id }: { id: string }) {
                     disabled={!s.draft || !!s.pending || expired}
                     className="w-full py-4 bg-ink text-paper smallcaps text-base font-semibold tracking-wider hover:bg-lobster transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                   >
-                    {s.pending?.type === "post" ? "Posting…" : "Tweet"}
+                    {s.pending?.type === "post" ? <Thinking label="safety check, then posting" since={s.pending.since} /> : "Tweet"}
                   </button>
                 )}
               </div>
@@ -242,7 +250,7 @@ export function SessionDesk({ id }: { id: string }) {
                         {img.status === "ready" ? (
                           // eslint-disable-next-line @next/next/no-img-element
                           <img src={`/api/session/${id}/image/${img.n}`} alt={img.prompt} className="w-full h-full object-cover" />
-                        ) : img.status === "pending" ? "…" : img.note || img.status}
+                        ) : img.status === "pending" ? <Thinking label="painting" since={s.pending?.type === "image" ? s.pending.since : undefined} /> : img.note || img.status}
                         {s.attachImage === img.n && <span className="absolute top-1 right-1 bg-lobster text-paper px-1.5 smallcaps">attached</span>}
                       </button>
                     ))}
@@ -268,7 +276,7 @@ export function SessionDesk({ id }: { id: string }) {
                         disabled={!imgPrompt.trim() || !!s.pending || expired}
                         className="px-4 py-2 bg-ink text-paper smallcaps text-sm font-semibold hover:bg-lobster disabled:opacity-40"
                       >
-                        {s.pending?.type === "image" ? "…" : "Generate"}
+                        {s.pending?.type === "image" ? <Thinking label="painting" /> : "Generate"}
                       </button>
                     </div>
                   </>

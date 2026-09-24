@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAccount, useSignMessage } from "wagmi";
 import { usePrice } from "./usePrice";
+import { Thinking } from "./Thinking";
 import { ago, compactCV, rememberSession } from "@/lib/client";
 import {
   CV_SIGN_MESSAGE,
@@ -89,7 +90,7 @@ export function Desk() {
             disabled={step !== "idle" || live === null || insufficient || closed}
             className="w-full py-4 bg-ink text-paper smallcaps text-base font-semibold tracking-wider hover:bg-lobster transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
           >
-            {step === "signing" ? "Sign in your wallet…" : step === "burning" ? "Burning…" : live !== null ? `Burn ${formatCV(live)} CV` : "…"}
+            {step === "signing" ? <Thinking label="sign in your wallet" /> : step === "burning" ? <Thinking label="burning" /> : live !== null ? `Burn ${formatCV(live)} CV` : "…"}
           </button>
         )}
       </div>
