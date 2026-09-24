@@ -7,7 +7,7 @@ export const MAX_IMAGE_PROMPT_CHARS = 1000;
 export const MAX_UPLOAD_BYTES = 2_500_000;
 /** Drafting time after purchase, then a short last call where the only move
  * left is to tweet. The session is over at DRAFT_MS + FINAL_MS. */
-export const DRAFT_MS = 30 * 60 * 1000;
+export const DRAFT_MS = 15 * 60 * 1000;
 export const FINAL_MS = 2 * 60 * 1000;
 export const SESSION_TTL_MS = DRAFT_MS + FINAL_MS;
 

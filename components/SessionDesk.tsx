@@ -23,7 +23,9 @@ async function toJpeg(file: File): Promise<string> {
 
 function clock(ms: number): string {
   const t = Math.max(0, Math.ceil(ms / 1000));
-  return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, "0")}`;
+  const h = Math.floor(t / 3600), m = Math.floor((t % 3600) / 60), s = t % 60;
+  const ss = String(s).padStart(2, "0");
+  return h ? `${h}:${String(m).padStart(2, "0")}:${ss}` : `${m}:${ss}`;
 }
 
 function weightedLength(text: string): number {

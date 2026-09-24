@@ -22,6 +22,19 @@ test("guard: length, hashtags, links, addresses", () => {
   assert.ok(!guardTweet("sol: 7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU").ok);
   assert.ok(!guardTweet("btc bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq").ok);
   assert.ok(guardTweet("thanks @vitalikbuterin for the conviction math 🦞").ok);
+  // links: ours only
+  assert.ok(guardTweet("burn CV at x.larv.ai 🦞").ok);
+  assert.ok(guardTweet("code: https://github.com/clawdbotatg/clawd-twitter-proxy").ok);
+  assert.ok(guardTweet("follow https://x.com/clawdbotatg").ok);
+  assert.ok(!guardTweet("see https://github.com/evil/drainer").ok);
+  assert.ok(!guardTweet("see https://x.com/scammer/status/1").ok);
+  assert.ok(!guardTweet("https://ethereum.org/en").ok);
+  assert.ok(!guardTweet("https://basescan.org/address/0x9f86dB9fc6f7c9408e8Fda3Ff8ce4e78ac7a6b07").ok);
+  assert.ok(!guardTweet("claim at clawd-rewards[.]xyz").ok);
+  assert.ok(!guardTweet("claim at clawd-rewards dot xyz").ok);
+  assert.ok(!guardTweet("claim at larv\u200b.ai.evil.com").ok);
+  assert.ok(!guardTweet("stake at lаrv.ai").ok); // Cyrillic а
+  assert.ok(!guardTweet("larv.ai.evil.xyz").ok);
 });
 
 test("parseOutput reads the tagged blocks", () => {

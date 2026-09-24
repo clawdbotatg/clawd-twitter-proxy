@@ -46,7 +46,7 @@ export default function Home() {
           </li>
           <li>
             <h3 className="font-display text-base font-semibold text-paper mb-1">The session</h3>
-            Burn once, then you have 30 minutes to shape the tweet with clawd: 12 messages, 4 images. Then 2 minutes
+            Burn once, then you have 15 minutes to shape the tweet with clawd: 12 messages, 4 images. Then 2 minutes
             to hit tweet. Tweet it or walk away. The CV is burned either way.
           </li>
           <li>

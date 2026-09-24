@@ -9,13 +9,42 @@ const TCO_LEN = 23;
 
 export const CLAWD_TOKEN = "0x9f86db9fc6f7c9408e8fda3ff8ce4e78ac7a6b07";
 
-/** Links to these (and their subdomains) are allowed in a tweet. */
-export const ALLOWED_DOMAINS = [
+/** Only links to our own things. A domain entry allows the whole domain and
+ * its subdomains; a "domain/path" entry allows only that account/org. */
+export const ALLOWED_LINKS = [
   "larv.ai", "leftclaw.services", "onedollaraudit.com", "ethskills.com",
   "slop.computer", "buidlguidl.com", "scaffoldeth.io", "speedrunethereum.com",
-  "ethereum.org", "github.com", "x.com", "twitter.com", "basescan.org",
-  "etherscan.io", "gmsers.com", "atg.link",
+  "gmsers.com", "atg.link",
+  "x.com/clawdbotatg", "x.com/austingriffith", "twitter.com/clawdbotatg", "twitter.com/austingriffith",
+  "github.com/clawdbotatg", "github.com/scaffold-eth", "github.com/BuidlGuidl", "github.com/austintgriffith",
 ];
+
+function linkAllowed(u) {
+  let url;
+  try {
+    url = new URL(/^https?:\/\//i.test(u) ? u : `https://${u}`);
+  } catch {
+    return false;
+  }
+  const host = url.hostname.toLowerCase().replace(/^www\./, "");
+  const path = url.pathname.toLowerCase();
+  return ALLOWED_LINKS.some(entry => {
+    const [d, ...rest] = entry.toLowerCase().split("/");
+    const p = rest.length ? `/${rest.join("/")}` : "";
+    if (!(host === d || (!p && host.endsWith(`.${d}`)))) return false;
+    return !p || path === p || path.startsWith(`${p}/`);
+  });
+}
+
+/** Undo the usual tricks before any check: look-alike Unicode, zero-width
+ * characters, and "evil[.]xyz" / "evil dot xyz" spellings. */
+export function normalize(text) {
+  return String(text ?? "")
+    .normalize("NFKC")
+    .replace(/[\u200B-\u200F\u2060-\u2064\uFEFF\u00AD]/g, "")
+    .replace(/\s*[\[(]\s*(?:\.|dot)\s*[\])]\s*/gi, ".")
+    .replace(/\s+dot\s+(?=[a-z]{2,}\b)/gi, ".");
+}
 
 export function weightedLength(text) {
   const urls = text.match(/https?:\/\/\S+/g) || [];
@@ -28,6 +57,16 @@ function hostOf(u) {
   } catch {
     return u.toLowerCase();
   }
+}
+
+function linkProblems(text) {
+  const problems = [];
+  for (const u of text.match(URL_RE) || []) {
+    if (!linkAllowed(u)) problems.push(`link to ${hostOf(u)} isn't one of ours`);
+  }
+  // Non-Latin letters next to a dot are how look-alike domains hide.
+  if (/[^\x00-\x7F][\w-]*\.[a-z]{2,}|\.[^\x00-\x7F]/iu.test(text)) problems.push("contains a look-alike domain");
+  return problems;
 }
 
 // Other chains' addresses (BTC, Solana, …) and emails: never in a clawd tweet.
@@ -46,11 +85,8 @@ function contentProblems(text) {
  * (e.g. words visible inside an attached image). */
 export function guardFreeText(text) {
   const problems = [];
-  text = String(text ?? "");
-  for (const u of text.match(URL_RE) || []) {
-    const h = hostOf(u);
-    if (!ALLOWED_DOMAINS.some(d => h === d || h.endsWith(`.${d}`))) problems.push(`link to ${h} isn't on the allowlist`);
-  }
+  text = normalize(text);
+  problems.push(...linkProblems(text));
   for (const a of text.match(/0x[0-9a-fA-F]{40}/g) || []) {
     if (a.toLowerCase() !== CLAWD_TOKEN) problems.push("contains an address other than $CLAWD's");
   }
@@ -67,18 +103,16 @@ export function guardTweet(text) {
   if (wl > 280) problems.push(`too long: ${wl}/280 weighted characters`);
   if (/(^|\s)#\w/.test(text)) problems.push("contains a hashtag (clawd never uses hashtags)");
 
-  for (const u of text.match(URL_RE) || []) {
-    const h = hostOf(u);
-    if (!ALLOWED_DOMAINS.some(d => h === d || h.endsWith(`.${d}`))) problems.push(`link to ${h} isn't on the allowlist`);
-  }
-  for (const a of text.match(/0x[0-9a-fA-F]{40}/g) || []) {
+  const norm = normalize(text);
+  problems.push(...linkProblems(norm));
+  for (const a of norm.match(/0x[0-9a-fA-F]{40}/g) || []) {
     if (a.toLowerCase() !== CLAWD_TOKEN) problems.push("contains an address other than $CLAWD's");
   }
-  if (/0x[0-9a-fA-F]{64}/.test(text)) problems.push("contains a hash/private-key-shaped string");
-  problems.push(...contentProblems(text));
-  const mentions = text.match(/(^|[^\w])@\w{1,15}/g) || [];
+  if (/0x[0-9a-fA-F]{64}/.test(norm)) problems.push("contains a hash/private-key-shaped string");
+  problems.push(...contentProblems(norm));
+  const mentions = norm.match(/(^|[^\w])@\w{1,15}/g) || [];
   if (mentions.length > 3) problems.push("tags more than 3 accounts");
-  if (/\b(seed phrase|private key|recovery phrase)\b/i.test(text) && /\b(send|dm|enter|share|paste|verify)\b/i.test(text)) {
+  if (/\b(seed phrase|private key|recovery phrase)\b/i.test(norm) && /\b(send|dm|enter|share|paste|verify)\b/i.test(norm)) {
     problems.push("looks like wallet-phishing bait");
   }
   return problems.length ? { ok: false, problems } : { ok: true, text };

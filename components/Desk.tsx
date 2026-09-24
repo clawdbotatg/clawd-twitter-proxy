@@ -81,7 +81,7 @@ export function Desk() {
         <span>{info ? (serverNow >= info.floorAt ? `${compactCV(info.floor)} floor` : `${compactCV(info.floor)} in ${ago(info.floorAt - serverNow)}`) : "…"}</span>
       </div>
 
-      <p className="mt-5 text-sm text-ink-soft">30 min · {MAX_TURNS} messages · {MAX_IMAGES} images · 1 tweet</p>
+      <p className="mt-5 text-sm text-ink-soft">15 min · {MAX_TURNS} messages · {MAX_IMAGES} images · 1 tweet</p>
 
       <div className="mt-5">
         {mounted && address && (
