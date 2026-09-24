@@ -2,7 +2,7 @@
 // its posted-log, and its Telegram bot. We never call its scripts: tg-send.js
 // snapshots state/pending.json as "what Austin saw", and a send from here
 // could make the approval daemon think Austin saw a draft he didn't.
-import { readFileSync, statSync, appendFileSync, existsSync } from "fs";
+import { readFileSync, writeFileSync, statSync, appendFileSync, existsSync } from "fs";
 import { join } from "path";
 import { homedir } from "os";
 
@@ -23,6 +23,26 @@ export async function telegram(text) {
     if (!res.ok) log("telegram failed", res.status);
   } catch (e) {
     log("telegram failed", e.message);
+  }
+}
+
+// ---------- the shared X read budget ----------
+// X bills per post read. clawd-twitter paces its feed pulls against a monthly
+// ledger (lib/feed.js); our metric reads go into the same ledger, same shape,
+// so its pacing sees them.
+
+export function recordXReads(count) {
+  if (!count) return;
+  const f = join(CT_ROOT, "state/usage-ledger.json");
+  try {
+    const ledger = existsSync(f) ? JSON.parse(readFileSync(f, "utf8")) : {};
+    const d = new Date(), p = n => String(n).padStart(2, "0");
+    const day = `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`, month = day.slice(0, 7);
+    ledger[month] = (ledger[month] || 0) + count;
+    ledger[day] = (ledger[day] || 0) + count;
+    writeFileSync(f, JSON.stringify(ledger, null, 2));
+  } catch (e) {
+    log("usage-ledger update failed", e.message);
   }
 }
 

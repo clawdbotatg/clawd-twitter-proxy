@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { pushFeed, putImage, updateSession } from "@/lib/store";
+import { pushFeed, putImage, trackTweet, updateSession } from "@/lib/store";
 import { workerAuthorized } from "@/lib/worker-auth";
 
 export const dynamic = "force-dynamic";
@@ -76,6 +76,7 @@ export async function POST(req: Request) {
       sessionId: s.id,
       image: s.attachImage,
     });
+    await trackTweet({ tweetId: s.tweet.id, sessionId: s.id, wallet: s.wallet, url: s.tweet.url, text: s.tweet.text, postedAt: s.tweet.postedAt });
     // No reset here: the purchase already reset the auction for this slot.
   }
   return NextResponse.json({ ok: true });

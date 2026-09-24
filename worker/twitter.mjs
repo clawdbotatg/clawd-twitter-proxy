@@ -18,6 +18,28 @@ function clawd() {
 
 const HANDLE = process.env.CLAWD_X_HANDLE || "clawdbotatg";
 
+/** Engagement numbers for our own tweets (≤100 ids). Uses the account's own
+ * OAuth, so X also returns the owner-only counts (profile + link clicks,
+ * for tweets under 30 days old). Missing ids (deleted) come back null. */
+export async function tweetMetrics(ids) {
+  const res = await clawd().v2.tweets(ids, { "tweet.fields": ["public_metrics", "non_public_metrics"] });
+  const out = Object.fromEntries(ids.map(id => [id, null]));
+  for (const t of res.data || []) {
+    const p = t.public_metrics || {}, n = t.non_public_metrics || {};
+    out[t.id] = {
+      likes: p.like_count || 0,
+      reposts: p.retweet_count || 0,
+      replies: p.reply_count || 0,
+      quotes: p.quote_count || 0,
+      bookmarks: p.bookmark_count || 0,
+      impressions: p.impression_count || n.impression_count || 0,
+      profileClicks: n.user_profile_clicks || 0,
+      linkClicks: n.url_link_clicks || 0,
+    };
+  }
+  return { metrics: out, read: (res.data || []).length };
+}
+
 export async function postTweet(text, jpegB64) {
   if (process.env.DRY_RUN_POST === "1") {
     const id = `dry${Date.now()}`;

@@ -56,3 +56,19 @@ CREATE TABLE IF NOT EXISTS events (
   seq  bigserial PRIMARY KEY,
   text text NOT NULL
 );
+
+-- Creator score per paid tweet. Metrics are read from X at 1h / 1d / 7d.
+CREATE TABLE IF NOT EXISTS tweet_scores (
+  tweet_id      text PRIMARY KEY,
+  session_id    text NOT NULL,
+  wallet        text NOT NULL,
+  url           text NOT NULL,
+  text          text NOT NULL,
+  posted_at     bigint NOT NULL,
+  metrics       jsonb,
+  score         numeric NOT NULL DEFAULT 0,
+  checks        int NOT NULL DEFAULT 0,
+  next_check_at bigint
+);
+CREATE INDEX IF NOT EXISTS tweet_scores_wallet ON tweet_scores (wallet);
+CREATE INDEX IF NOT EXISTS tweet_scores_due ON tweet_scores (next_check_at);

@@ -13,8 +13,8 @@ import { runTurn } from "./agent.mjs";
 import { guardTweet } from "./guard.mjs";
 import { reviewImagePrompt, reviewTweet, reviewUpload } from "./safety.mjs";
 import { generateImage } from "./image.mjs";
-import { postTweet } from "./twitter.mjs";
-import { newClawdTweets, recordInPostedLog, telegram } from "./clawdtwitter.mjs";
+import { postTweet, tweetMetrics } from "./twitter.mjs";
+import { newClawdTweets, recordInPostedLog, recordXReads, telegram } from "./clawdtwitter.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const STATE = join(HERE, "state");
@@ -192,11 +192,31 @@ process.on("SIGTERM", async () => {
   process.exit(0);
 });
 
+// Creator scores: every 10 minutes, read engagement for paid tweets that are
+// due (1h / 1d / 7d after posting) and hand the numbers to the site.
+const SCORE_EVERY_MS = 10 * 60 * 1000;
+let lastScore = 0;
+async function scoreTweets() {
+  if (Date.now() - lastScore < SCORE_EVERY_MS) return;
+  lastScore = Date.now();
+  try {
+    let { due } = await api("/api/worker/scores", {});
+    if (!due.length || process.env.DRY_RUN_POST === "1") return;
+    const { metrics, read } = await tweetMetrics(due);
+    recordXReads(read);
+    await api("/api/worker/scores", { results: metrics });
+    log(`scored ${due.length} tweet(s)`);
+  } catch (e) {
+    log("scoring failed", e.message);
+  }
+}
+
 async function poll() {
   newClawdTweets(); // prime the offset: start at the end of the log
   for (;;) {
     if (stopping) { await sleep(1000); continue; }
     await watchClawdTweets();
+    await scoreTweets();
     if (running >= CONCURRENCY) { await sleep(500); continue; }
     let claimed;
     try {

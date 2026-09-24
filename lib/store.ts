@@ -3,6 +3,7 @@ import { neon } from "@neondatabase/serverless";
 import { PriceState, startPriceFor } from "./price";
 import { JOB_TIMEOUT_MS, SESSION_TTL_MS } from "./limits";
 import { fetchHighestCV } from "./larv";
+import { TweetMetrics, nextCheckAt, scoreOf } from "./score";
 
 /** All state lives in the `btt` schema of larv.ai's Neon Postgres, reached as
  * the `btt` role — which cannot see larv.ai's own tables (CV balances etc.).
@@ -296,4 +297,53 @@ export async function takeEvents(): Promise<string[]> {
                              SELECT seq FROM events ORDER BY seq LIMIT 10 FOR UPDATE SKIP LOCKED
                            ) RETURNING seq, text`) as { seq: string; text: string }[];
   return rows.sort((a, b) => Number(a.seq) - Number(b.seq)).map(r => r.text);
+}
+
+// ---------- creator scores ----------
+
+export interface ScoreRow {
+  tweet_id: string;
+  wallet: string;
+  url: string;
+  text: string;
+  posted_at: string;
+  score: string;
+  checks: number;
+}
+
+export async function trackTweet(t: { tweetId: string; sessionId: string; wallet: string; url: string; text: string; postedAt: number }): Promise<void> {
+  await db()`INSERT INTO tweet_scores (tweet_id, session_id, wallet, url, text, posted_at, next_check_at)
+             VALUES (${t.tweetId}, ${t.sessionId}, ${t.wallet}, ${t.url}, ${t.text}, ${t.postedAt}, ${nextCheckAt(t.postedAt, 0)})
+             ON CONFLICT (tweet_id) DO NOTHING`;
+}
+
+/** Tweets whose next metrics read is due (the worker reads X, we score). */
+export async function dueTweets(limit = 100): Promise<string[]> {
+  const rows = (await db()`SELECT tweet_id FROM tweet_scores WHERE next_check_at IS NOT NULL AND next_check_at <= ${Date.now()}
+                           ORDER BY next_check_at LIMIT ${limit}`) as { tweet_id: string }[];
+  return rows.map(r => r.tweet_id);
+}
+
+export async function recordMetrics(tweetId: string, m: TweetMetrics | null): Promise<void> {
+  const rows = (await db()`SELECT posted_at, checks FROM tweet_scores WHERE tweet_id = ${tweetId}`) as { posted_at: string; checks: number }[];
+  if (!rows[0]) return;
+  const checks = rows[0].checks + 1;
+  const next = nextCheckAt(Number(rows[0].posted_at), checks);
+  if (m) {
+    await db()`UPDATE tweet_scores SET metrics = ${JSON.stringify(m)}::jsonb, score = ${scoreOf(m)}, checks = ${checks}, next_check_at = ${next}
+               WHERE tweet_id = ${tweetId}`;
+  } else {
+    // Deleted or unreadable: keep the last score, stop checking.
+    await db()`UPDATE tweet_scores SET checks = ${checks}, next_check_at = NULL WHERE tweet_id = ${tweetId}`;
+  }
+}
+
+export async function leaderboard() {
+  const creators = (await db()`SELECT wallet, count(*)::int AS tweets, coalesce(sum(score), 0)::float AS score
+                               FROM tweet_scores GROUP BY wallet ORDER BY score DESC, tweets DESC LIMIT 100`) as
+    { wallet: string; tweets: number; score: number }[];
+  const tweets = (await db()`SELECT tweet_id, wallet, url, text, posted_at, score::float AS score, metrics, checks
+                             FROM tweet_scores ORDER BY posted_at DESC LIMIT 50`) as
+    { tweet_id: string; wallet: string; url: string; text: string; posted_at: string; score: number; metrics: TweetMetrics | null; checks: number }[];
+  return { creators, tweets: tweets.map(t => ({ ...t, posted_at: Number(t.posted_at) })) };
 }
