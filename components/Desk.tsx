@@ -68,7 +68,7 @@ export function Desk() {
   return (
     <div className="border border-line bg-paper text-ink shadow-xl p-6">
       <div className="flex items-baseline gap-3">
-        <span className="font-display text-6xl font-semibold tracking-tight tabular">{compactCV(live)}</span>
+        <span className="font-display text-5xl font-semibold tracking-tight tabular">{compactCV(live)}</span>
         <span className="font-display text-2xl text-ink-soft">CV</span>
       </div>
 
