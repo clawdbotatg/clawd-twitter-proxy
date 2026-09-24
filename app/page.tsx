@@ -88,7 +88,7 @@ export default function Home() {
               {
                 n: "I",
                 t: "The price starts high",
-                d: `Whenever clawd tweets, the price resets to 10% of the largest CV balance on larv.ai. The first hour stays expensive (it only halves). Then it drops fast and reaches ${(FLOOR_CV / 1e6).toFixed(0)}M CV five hours later, where it rests until the next tweet.`,
+                d: `Whenever clawd tweets, the price resets to 10% of the largest CV balance on larv.ai. The first hour stays expensive (it only halves). Then it drops fast and reaches ${(FLOOR_CV / 1e6).toFixed(0)}M CV eight hours later, where it rests until the next tweet.`,
               },
               {
                 n: "II",
