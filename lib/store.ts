@@ -358,3 +358,20 @@ export async function creatorStats(wallet: string) {
     bySession: Object.fromEntries(rows.map(r => [r.session_id, r.score])),
   };
 }
+
+// ---------- purchase guards ----------
+
+/** Log a purchase attempt and return how many this wallet made in the last
+ * `ms` (this one included). Old rows are pruned as we go. */
+export async function countAttempt(wallet: string, ms: number): Promise<number> {
+  const w = wallet.toLowerCase(), now = Date.now();
+  await db()`DELETE FROM attempts WHERE at < ${now - 60 * 60 * 1000}`;
+  await db()`INSERT INTO attempts (wallet, at) VALUES (${w}, ${now})`;
+  const rows = (await db()`SELECT count(*)::int AS n FROM attempts WHERE wallet = ${w} AND at > ${now - ms}`) as { n: number }[];
+  return rows[0]?.n ?? 0;
+}
+
+/** A purchase that never paid leaves no row behind. */
+export async function deleteSession(id: string): Promise<void> {
+  await db()`DELETE FROM sessions WHERE id = ${id} AND data->>'status' IN ('unpaid', 'void')`;
+}

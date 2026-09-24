@@ -62,13 +62,20 @@ function ledger() {
 }
 function recordPost(sessionId, entry) {
   const l = ledger();
-  l[sessionId] = entry;
+  if (entry === null) delete l[sessionId];
+  else l[sessionId] = entry;
   writeFileSync(LEDGER, JSON.stringify(l, null, 2));
 }
 
-// Austin's stop switch: this file exists → the site takes no new purchases.
-// Paid sessions still get served. The approval daemon creates or removes it
-// when he says "stop x.larv.ai" / "resume x.larv.ai" on Telegram.
+const X_TIMEOUT_MS = 90_000;
+function withTimeout(p, ms) {
+  return Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error(`no answer from X in ${ms / 1000}s`)), ms))]);
+}
+
+// Austin's stop switch: this file exists → no new purchases and no posts
+// (paid sessions can still chat, but can't tweet until it's lifted). The
+// approval daemon creates or removes it when he says "stop x.larv.ai" /
+// "resume x.larv.ai" on Telegram.
 export const PAUSE_FILE = join(STATE, "PAUSED");
 const short = w => `${w.slice(0, 6)}…${w.slice(-4)}`;
 
@@ -123,7 +130,14 @@ async function handle({ job, session, imageB64, maxTurns }) {
 
   if (job.type === "post") {
     const prior = ledger()[session.id];
+    if (prior?.inflight) {
+      // An earlier attempt reached X and never came back. It may be live —
+      // never risk a second copy; a human checks.
+      telegram(`⚠️ session ${session.id.slice(0, 6)}: a post attempt timed out and may be live. Check @clawdbotatg. Not retrying.`);
+      return report({ ...base, ok: false, note: "your tweet may already be posting. Check @clawdbotatg before trying again." });
+    }
     if (prior) return report({ ...base, ok: true, tweetId: prior.id, url: prior.url, text: prior.text });
+    if (existsSync(PAUSE_FILE)) return report({ ...base, ok: false, note: "posting is paused right now. Try again in a bit." });
 
     const g = guardTweet(session.draft);
     if (!g.ok) return report({ ...base, ok: false, note: `can't post: ${g.problems.join("; ")}` });
@@ -143,8 +157,11 @@ async function handle({ job, session, imageB64, maxTurns }) {
       return report({ ...base, ok: false, note: `blocked by the safety check: ${v.reason} — ask clawd for a different take.` });
     }
 
+    // Mark it in flight BEFORE calling X: if we never hear back, no retry
+    // (from this session or a re-queued job) can post it twice.
+    recordPost(session.id, { inflight: true, at: Date.now() });
     try {
-      const t = await postTweet(g.text, img ? imageB64 : null);
+      const t = await withTimeout(postTweet(g.text, img ? imageB64 : null), X_TIMEOUT_MS);
       recordPost(session.id, { id: t.id, url: t.url, text: g.text, wallet: session.wallet, at: Date.now() });
       log("POSTED", session.id, t.url);
       const dry = process.env.DRY_RUN_POST === "1";
@@ -155,7 +172,14 @@ async function handle({ job, session, imageB64, maxTurns }) {
       return report({ ...base, ok: true, tweetId: t.id, url: t.url, text: g.text });
     } catch (e) {
       log("post failed", session.id, e.message);
-      return report({ ...base, ok: false, note: `X rejected the post: ${String(e.data?.detail || e.message).slice(0, 200)}` });
+      if (e.data || typeof e.code === "number") { // an HTTP error response from X (not ECONNRESET etc.)
+        // X answered with an error: nothing posted, safe to try again.
+        recordPost(session.id, null);
+        return report({ ...base, ok: false, note: `X rejected the post: ${String(e.data?.detail || e.message).slice(0, 200)}` });
+      }
+      // Timeout / network: it may have landed. Keep the in-flight mark.
+      telegram(`⚠️ session ${session.id.slice(0, 6)}: X didn't answer (${e.message}). The tweet may be live. Check @clawdbotatg.`);
+      return report({ ...base, ok: false, note: "X didn't answer. Your tweet may be live. Check @clawdbotatg before trying again." });
     }
   }
 }

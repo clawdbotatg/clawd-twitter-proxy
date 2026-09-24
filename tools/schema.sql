@@ -72,3 +72,10 @@ CREATE TABLE IF NOT EXISTS tweet_scores (
 );
 CREATE INDEX IF NOT EXISTS tweet_scores_wallet ON tweet_scores (wallet);
 CREATE INDEX IF NOT EXISTS tweet_scores_due ON tweet_scores (next_check_at);
+
+-- Purchase attempts (every try, paid or not) — the per-wallet rate limit.
+CREATE TABLE IF NOT EXISTS attempts (
+  wallet text NOT NULL,
+  at     bigint NOT NULL
+);
+CREATE INDEX IF NOT EXISTS attempts_wallet_at ON attempts (wallet, at);

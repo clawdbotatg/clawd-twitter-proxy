@@ -24,6 +24,19 @@ export async function fetchHighestCV(): Promise<number | null> {
   }
 }
 
+/** Spendable CV (larv.ai's public ledger read), or null if unreadable. */
+export async function fetchBalance(wallet: string): Promise<number | null> {
+  try {
+    const res = await fetch(`${LARV_APP}/api/clawdviction/${wallet}`, { cache: "no-store" });
+    if (!res.ok) return null;
+    const d = await res.json();
+    const n = Number(d.balance ?? d.clawdviction);
+    return Number.isFinite(n) ? n : null;
+  } catch {
+    return null;
+  }
+}
+
 /** EOAs and EIP-1271 smart wallets. */
 export async function verifyCVSignature(wallet: string, signature: string): Promise<boolean> {
   try {

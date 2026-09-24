@@ -4,12 +4,13 @@ import { join } from "path";
 import { AGENT_DIR, runClaude } from "./claude.mjs";
 import { guardTweet } from "./guard.mjs";
 import { existsSync } from "fs";
-import { CT_ROOT, todaysContext } from "./clawdtwitter.mjs";
+import { todaysContext } from "./clawdtwitter.mjs";
 
 const SYSTEM = join(AGENT_DIR, "CLAWD.md");
-// clawd-twitter's full style guide (real tweets + patterns) rides along as
-// extra memory — the same voice the account's own pipeline writes in.
-const STYLE = join(CT_ROOT, "STYLE.md");
+// Voice memory: a trimmed copy of clawd-twitter's style guide (patterns + real
+// tweets only). The full one has private notes and pipeline details that a
+// stranger could get quoted back to them.
+const STYLE = join(AGENT_DIR, "STYLE.md");
 const style = () => (existsSync(STYLE) ? STYLE : undefined);
 
 function fence(s) {
@@ -41,13 +42,22 @@ function tag(text, name) {
   return m ? m[1].trim() : null;
 }
 
+/** Chat replies go straight to a stranger: scrub anything that looks like an
+ * email or a local path (the model's context holds the account's email and
+ * a working directory). Drafts are guarded separately. */
+export function scrubReply(s) {
+  return String(s)
+    .replace(/[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+\.[A-Za-z0-9.-]+/g, "[redacted]")
+    .replace(/(?:\/Users|\/private|\/home|\/tmp|\/opt|~)\/[^\s"'`)]+/g, "[redacted]");
+}
+
 export function parseOutput(text) {
   const reply = tag(text, "reply");
   let draft = tag(text, "draft");
   const image = tag(text, "image");
-  if (reply === null && draft === null) return { reply: text.trim().slice(0, 1500), draft: null, imageIdea: null };
+  if (reply === null && draft === null) return { reply: scrubReply(text.trim().slice(0, 1500)), draft: null, imageIdea: null };
   if (draft) draft = draft.replace(/\\n/g, "\n").replace(/^["“]|["”]$/g, "").trim();
-  return { reply: reply || "", draft: draft || null, imageIdea: image || null };
+  return { reply: scrubReply(reply || ""), draft: draft || null, imageIdea: image ? scrubReply(image) : null };
 }
 
 export async function runTurn(session, maxTurns) {

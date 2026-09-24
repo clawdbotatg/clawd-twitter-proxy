@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { priceAt } from "@/lib/price";
-import { createSession, deskStatus, getPriceState, pushEvent, resetPrice, saveSession } from "@/lib/store";
-import { spendCV, verifyCVSignature } from "@/lib/larv";
+import { createSession, deleteSession, deskStatus, getPriceState, pushEvent, countAttempt, resetPrice, saveSession } from "@/lib/store";
+import { fetchBalance, spendCV, verifyCVSignature } from "@/lib/larv";
 
 export const dynamic = "force-dynamic";
 
@@ -29,12 +29,24 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  // Cheap checks before anything touches the database or larv.ai's spend API:
+  // a few attempts a minute per wallet, and enough CV to cover the price.
+  if ((await countAttempt(wallet, 60_000)) > 3) {
+    return NextResponse.json({ error: "too many tries — wait a minute" }, { status: 429 });
+  }
+  const balance = await fetchBalance(wallet);
+  if (balance !== null && balance < price) {
+    return NextResponse.json(
+      { error: `not enough CV — you have ${Math.floor(balance).toLocaleString("en-US")}, the price is ${price.toLocaleString("en-US")}` },
+      { status: 402 },
+    );
+  }
+
   // Record first, then spend: if the spend succeeds we always have a session to show for it.
   const { session, token } = await createSession(wallet, price);
   const spent = await spendCV(wallet, signature, price);
   if (!spent.ok) {
-    session.status = "void";
-    await saveSession(session);
+    await deleteSession(session.id);
     return NextResponse.json({ error: spent.error }, { status: spent.status });
   }
   session.status = "active";
