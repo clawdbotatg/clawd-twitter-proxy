@@ -1,0 +1,7 @@
+{
+  "name": "burn-to-tweet-worker",
+  "private": true,
+  "type": "module",
+  "scripts": { "start": "node worker.mjs" },
+  "dependencies": { "twitter-api-v2": "^1.17.2" }
+}

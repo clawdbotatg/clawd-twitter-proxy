@@ -1,0 +1,76 @@
+@import "tailwindcss";
+
+@theme {
+  --color-ink: #14181d;
+  --color-ink-soft: #3d4650;
+  --color-paper: #f6f3ea;
+  --color-paper-dark: #eeeade;
+  --color-line: #d8d2c0;
+  --color-gold: #a8862c;
+  --color-gold-bright: #c9a53e;
+  --color-seal: #9c2b23;
+  --color-mint: #1b6e53;
+  /* Matched to the hero illustration's flat background so it blends in */
+  --color-lobster: #540e0a;
+  --color-lobster-deep: #440c08;
+  --color-lobster-night: #300805;
+  --color-lobster-line: #7d3a2c;
+  --font-display: var(--font-fraunces), Georgia, serif;
+  --font-body: var(--font-inter), system-ui, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", Menlo, monospace;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+/* Tailwind v4 preflight drops the pointer cursor on buttons — bring it back */
+button:not(:disabled) {
+  cursor: pointer;
+}
+
+/* The desk is dark lobster red; the forms on it stay cream paper. */
+body {
+  background: var(--color-lobster);
+  color: var(--color-paper);
+  font-family: var(--font-body);
+  -webkit-font-smoothing: antialiased;
+}
+
+.font-display {
+  font-family: var(--font-display);
+}
+
+/* Engraved ledger rule — double line used under section headings
+ * (cream on the lobster ground) */
+.ledger-rule {
+  border-top: 1px solid var(--color-paper);
+  position: relative;
+}
+.ledger-rule::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 0;
+  right: 0;
+  border-top: 1px solid var(--color-lobster-line);
+}
+
+.smallcaps {
+  font-variant-caps: all-small-caps;
+  letter-spacing: 0.14em;
+}
+
+/* Live-ticking figures — fixed-width digits so the counter doesn't wobble */
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+/* The claw bobs gently — pixel art doesn't spin */
+@keyframes float-slow {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-8px); }
+}
+.float-slow {
+  animation: float-slow 6s ease-in-out infinite;
+}

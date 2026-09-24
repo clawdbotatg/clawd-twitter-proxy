@@ -1,0 +1,35 @@
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { DECAY_MS, FLOOR_CV, priceAt, startPriceFor } from "../lib/price.ts";
+
+test("reset price is 10% of the top holder, never below the floor", () => {
+  assert.equal(startPriceFor(13_224_636_146), 1_322_463_615);
+  assert.equal(startPriceFor(100_000_000), FLOOR_CV);
+  assert.equal(startPriceFor(0), FLOOR_CV);
+});
+
+test("decays from start to exactly the floor over 24h, then rests", () => {
+  const s = { resetAt: 1_000_000, startPrice: 1_320_000_000 };
+  assert.equal(priceAt(s, s.resetAt), 1_320_000_000);
+  assert.equal(priceAt(s, s.resetAt + DECAY_MS), FLOOR_CV);
+  assert.equal(priceAt(s, s.resetAt + 3 * DECAY_MS), FLOOR_CV);
+  const half = priceAt(s, s.resetAt + DECAY_MS / 2);
+  // geometric midpoint
+  assert.ok(Math.abs(half - Math.sqrt(1_320_000_000 * FLOOR_CV)) < 2);
+});
+
+test("monotonically non-increasing between resets", () => {
+  const s = { resetAt: 0, startPrice: 900_000_000 };
+  let prev = Infinity;
+  for (let t = 0; t <= DECAY_MS + 60_000; t += 60_000) {
+    const p = priceAt(s, t);
+    assert.ok(p <= prev, `rose at t=${t}`);
+    assert.ok(Number.isInteger(p));
+    prev = p;
+  }
+});
+
+test("clock skew before reset doesn't exceed the start", () => {
+  const s = { resetAt: 10_000, startPrice: 500_000_000 };
+  assert.equal(priceAt(s, 0), 500_000_000);
+});

@@ -1,0 +1,310 @@
+"use client";
+
+import Link from "next/link";
+import { useCallback, useEffect, useRef, useState } from "react";
+import type { Session } from "@/lib/store";
+import { compactCV, sessionToken, shortAddr } from "@/lib/client";
+import { MAX_IMAGES, MAX_TURNS } from "@/lib/limits";
+
+type View = Omit<Session, "tokenHash">;
+
+function weightedLength(text: string): number {
+  const urls = text.match(/https?:\/\/\S+/g) || [];
+  return [...text.replace(/https?:\/\/\S+/g, "")].length + urls.length * 23;
+}
+
+export function SessionDesk({ id }: { id: string }) {
+  const [s, setS] = useState<View | null>(null);
+  const [readOnly, setReadOnly] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [gone, setGone] = useState<string | null>(null);
+  const [text, setText] = useState("");
+  const [imgPrompt, setImgPrompt] = useState("");
+  const [withClawd, setWithClawd] = useState(true);
+  const [confirming, setConfirming] = useState(false);
+  const token = useRef<string | null>(null);
+  const bottom = useRef<HTMLDivElement>(null);
+  const seen = useRef(0);
+
+  const load = useCallback(async () => {
+    const r = await fetch(`/api/session/${id}`, {
+      headers: token.current ? { "x-session-token": token.current } : {},
+      cache: "no-store",
+    });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) { setGone(d.error || "not found"); return; }
+    setReadOnly(!!d.readOnly);
+    setS(d.session);
+  }, [id]);
+
+  useEffect(() => {
+    token.current = sessionToken(id);
+    load();
+  }, [id, load]);
+
+  // Poll fast while clawd works, slow otherwise.
+  const pending = !!s?.pending;
+  useEffect(() => {
+    if (!s || s.status !== "active") return;
+    const t = setInterval(load, pending ? 1500 : 10_000);
+    return () => clearInterval(t);
+  }, [s, pending, load]);
+
+  useEffect(() => {
+    const n = s?.messages.length ?? 0;
+    if (n !== seen.current) { seen.current = n; bottom.current?.scrollIntoView({ behavior: "smooth", block: "end" }); }
+  }, [s?.messages.length]);
+
+  // Offer clawd's image idea once, without clobbering anything typed.
+  useEffect(() => {
+    if (s?.imageIdea && !imgPrompt) setImgPrompt(s.imageIdea);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [s?.imageIdea]);
+
+  async function act(body: Record<string, unknown>) {
+    setErr(null);
+    const r = await fetch(`/api/session/${id}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-session-token": token.current || "" },
+      body: JSON.stringify(body),
+    });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) { setErr(d.error || "that didn't work"); return false; }
+    setS(d.session);
+    return true;
+  }
+
+  if (gone) {
+    return (
+      <Shell>
+        <p className="text-paper/80">
+          {gone === "not your session"
+            ? "This session belongs to another browser. If it's yours, go back and use “Find my sessions” with the wallet that paid."
+            : "No such session."}
+        </p>
+        <Link href="/" className="mt-4 inline-block smallcaps underline">← back to the desk</Link>
+      </Shell>
+    );
+  }
+  if (!s) return <Shell><p className="text-paper/70">Opening the session…</p></Shell>;
+
+  const turnsLeft = MAX_TURNS - s.turns;
+  const canTalk = s.status === "active" && !readOnly && !s.pending && turnsLeft > 0;
+  const posted = s.status === "posted";
+  const expired = s.status === "active" && Date.now() > s.expiresAt;
+  const attached = s.attachImage !== null ? s.images[s.attachImage] : null;
+
+  return (
+    <Shell>
+      <div className="flex flex-wrap items-baseline justify-between gap-4 mb-8">
+        <div>
+          <p className="smallcaps text-sm text-gold-bright">Session {id.slice(0, 6)} · {shortAddr(s.wallet)} · {compactCV(s.pricePaid)} CV burned</p>
+          <h1 className="font-display text-4xl sm:text-5xl font-semibold tracking-tight mt-1">
+            {posted ? "It's out there." : "Rent the claw."}
+          </h1>
+        </div>
+        {!posted && (
+          <div className="sm:text-right text-sm">
+            <div className="font-display text-3xl tabular">{turnsLeft}</div>
+            <div className="smallcaps text-paper/70">turns left of {MAX_TURNS}</div>
+          </div>
+        )}
+      </div>
+
+      <div className="grid lg:grid-cols-[1fr_420px] gap-8 items-start">
+        {/* conversation */}
+        <div className="border border-line bg-paper text-ink shadow-xl flex flex-col min-h-[28rem]">
+          <div className="border-b border-line bg-paper-dark px-6 py-3 smallcaps text-sm font-semibold text-ink-soft">Correspondence</div>
+          <div className="flex-1 p-6 space-y-5 overflow-y-auto max-h-[60vh]">
+            {s.messages.length === 0 && !readOnly && (
+              <p className="text-ink-soft text-sm leading-relaxed">
+                Tell clawd what the tweet is about: a take, an announcement, a joke, a shoutout. Give it the facts,
+                because it can&apos;t look anything up. It will draft on the first reply, and you can refine from there.
+              </p>
+            )}
+            {readOnly && <p className="text-ink-soft text-sm">The conversation behind this tweet is private to whoever commissioned it.</p>}
+            {s.messages.map((m, i) => (
+              <div key={i} className={m.role === "user" ? "pl-8" : "pr-8"}>
+                <div className="smallcaps text-xs text-ink-soft mb-1">{m.role === "user" ? "you" : "clawd 🦞"}</div>
+                <div className={`whitespace-pre-wrap text-[15px] leading-relaxed px-4 py-3 border ${m.role === "user" ? "bg-white border-line" : "bg-paper-dark border-line"}`}>
+                  {m.text}
+                </div>
+              </div>
+            ))}
+            {s.pending?.type === "turn" && <p className="text-ink-soft text-sm italic">clawd is writing…</p>}
+            <div ref={bottom} />
+          </div>
+          {!posted && !readOnly && (
+            <form
+              className="border-t border-line p-4 flex gap-3"
+              onSubmit={async e => {
+                e.preventDefault();
+                if (text.trim() && (await act({ action: "message", text }))) setText("");
+              }}
+            >
+              <textarea
+                value={text}
+                onChange={e => setText(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); (e.currentTarget.form as HTMLFormElement).requestSubmit(); }
+                }}
+                placeholder={turnsLeft > 0 ? "what should clawd tweet?" : "out of turns. Tweet the draft or let it go"}
+                disabled={!canTalk || expired}
+                maxLength={2000}
+                rows={2}
+                className="flex-1 border border-line bg-white px-3 py-2 text-sm focus:outline-none focus:border-ink resize-none disabled:opacity-50"
+              />
+              <button
+                type="submit"
+                disabled={!canTalk || expired || !text.trim()}
+                className="px-5 bg-ink text-paper smallcaps font-semibold hover:bg-lobster transition-colors disabled:opacity-40"
+              >
+                Send
+              </button>
+            </form>
+          )}
+        </div>
+
+        {/* the tweet */}
+        <div className="space-y-6">
+          <div className="border border-line bg-paper text-ink shadow-xl">
+            <div className="border-b border-line bg-paper-dark px-6 py-3 flex justify-between items-baseline">
+              <span className="smallcaps text-sm font-semibold text-ink-soft">{posted ? "Posted" : "The draft"}</span>
+              {s.draft && !posted && <span className="font-mono text-xs text-ink-soft tabular">{weightedLength(s.draft)}/280</span>}
+            </div>
+            <div className="p-5">
+              <div className="flex items-center gap-3 mb-3">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src="/clawd.jpg" alt="" className="w-10 h-10 rounded-full" />
+                <div className="text-sm leading-tight">
+                  <div className="font-semibold">clawd</div>
+                  <div className="text-ink-soft">@clawdbotatg</div>
+                </div>
+              </div>
+              {(posted ? s.tweet?.text : s.draft) ? (
+                <p className="whitespace-pre-wrap text-[15px] leading-snug">{posted ? s.tweet!.text : s.draft}</p>
+              ) : (
+                <p className="text-ink-soft text-sm italic">No draft yet.</p>
+              )}
+              {attached && attached.status === "ready" && (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={`/api/session/${id}/image/${attached.n}`} alt={attached.prompt} className="mt-3 w-full border border-line" />
+              )}
+            </div>
+
+            {posted && s.tweet && (
+              <div className="px-5 pb-5">
+                <a href={s.tweet.url} target="_blank" rel="noopener noreferrer" className="block text-center w-full py-3 bg-mint text-paper smallcaps font-semibold">
+                  View on X →
+                </a>
+              </div>
+            )}
+
+            {!posted && !readOnly && (
+              <div className="px-5 pb-5 space-y-3">
+                {confirming ? (
+                  <div className="border border-seal/50 bg-seal/5 p-3 text-sm space-y-3">
+                    <p>Post this{attached ? " with the image" : ""} from @clawdbotatg? It passes a safety review first. Once it&apos;s out, the session closes and the price resets.</p>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={async () => { setConfirming(false); await act({ action: "tweet" }); }}
+                        className="flex-1 py-2 bg-ink text-paper smallcaps font-semibold hover:bg-lobster"
+                      >
+                        Yes, tweet it
+                      </button>
+                      <button onClick={() => setConfirming(false)} className="px-4 py-2 border border-line smallcaps">Not yet</button>
+                    </div>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => setConfirming(true)}
+                    disabled={!s.draft || !!s.pending || expired}
+                    className="w-full py-4 bg-ink text-paper smallcaps text-base font-semibold tracking-wider hover:bg-lobster transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    {s.pending?.type === "post" ? "Safety review, then posting…" : "Tweet it 🦞"}
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* images */}
+          {!posted && !readOnly && (
+            <div className="border border-line bg-paper text-ink shadow-xl">
+              <div className="border-b border-line bg-paper-dark px-6 py-3 flex justify-between items-baseline">
+                <span className="smallcaps text-sm font-semibold text-ink-soft">Illustration (optional)</span>
+                <span className="font-mono text-xs text-ink-soft">{s.images.length}/{MAX_IMAGES}</span>
+              </div>
+              <div className="p-5 space-y-3">
+                {s.images.length > 0 && (
+                  <div className="grid grid-cols-2 gap-2">
+                    {s.images.map(img => (
+                      <button
+                        key={img.n}
+                        disabled={img.status !== "ready" || !!s.pending}
+                        onClick={() => act({ action: "attach", n: s.attachImage === img.n ? null : img.n })}
+                        className={`relative aspect-square border-2 ${s.attachImage === img.n ? "border-lobster" : "border-line"} bg-paper-dark text-xs text-ink-soft flex items-center justify-center overflow-hidden`}
+                        title={img.prompt}
+                      >
+                        {img.status === "ready" ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={`/api/session/${id}/image/${img.n}`} alt={img.prompt} className="w-full h-full object-cover" />
+                        ) : img.status === "pending" ? "painting…" : img.note || img.status}
+                        {s.attachImage === img.n && <span className="absolute top-1 right-1 bg-lobster text-paper px-1.5 smallcaps">attached</span>}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {s.images.length < MAX_IMAGES && (
+                  <>
+                    <textarea
+                      value={imgPrompt}
+                      onChange={e => setImgPrompt(e.target.value)}
+                      placeholder="describe the image"
+                      rows={2}
+                      maxLength={1000}
+                      className="w-full border border-line bg-white px-3 py-2 text-sm focus:outline-none focus:border-ink resize-none"
+                    />
+                    <div className="flex items-center justify-between gap-3">
+                      <label className="text-sm flex items-center gap-2">
+                        <input type="checkbox" checked={withClawd} onChange={e => setWithClawd(e.target.checked)} />
+                        feature clawd
+                      </label>
+                      <button
+                        onClick={() => act({ action: "image", prompt: imgPrompt, withClawd })}
+                        disabled={!imgPrompt.trim() || !!s.pending || expired}
+                        className="px-4 py-2 bg-ink text-paper smallcaps text-sm font-semibold hover:bg-lobster disabled:opacity-40"
+                      >
+                        {s.pending?.type === "image" ? "Painting…" : "Generate"}
+                      </button>
+                    </div>
+                    <p className="text-xs text-ink-soft/70">Images take up to a minute. Tap one to attach it or detach it. Images don&apos;t use turns.</p>
+                  </>
+                )}
+              </div>
+            </div>
+          )}
+
+          {(err || s.notice) && (
+            <p className="text-sm text-paper border border-paper/40 bg-lobster-deep px-4 py-3">{err || s.notice}</p>
+          )}
+          {expired && <p className="text-sm text-paper/80">This session expired after 24 hours.</p>}
+        </div>
+      </div>
+    </Shell>
+  );
+}
+
+function Shell({ children }: { children: React.ReactNode }) {
+  return (
+    <main className="min-h-screen">
+      <header className="max-w-6xl mx-auto px-6 pt-6 flex items-center justify-between">
+        <Link href="/" className="font-display text-lg font-semibold tracking-tight">
+          burn<span className="text-gold-bright">·</span>to<span className="text-gold-bright">·</span>tweet
+        </Link>
+        <a href="https://x.com/clawdbotatg" target="_blank" rel="noopener noreferrer" className="smallcaps text-sm hover:text-gold-bright">@clawdbotatg</a>
+      </header>
+      <section className="max-w-6xl mx-auto px-6 py-12">{children}</section>
+    </main>
+  );
+}
