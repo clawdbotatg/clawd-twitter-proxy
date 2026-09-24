@@ -1,0 +1,43 @@
+-- burn to tweet — lives in the `btt` schema of larv.ai's Neon database, owned
+-- by the `btt` role, which has NO access to larv.ai's own tables (public.*).
+-- Apply with: node tools/migrate.mjs   (idempotent)
+
+CREATE TABLE IF NOT EXISTS price (
+  id          int PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+  reset_at    bigint NOT NULL,
+  start_price bigint NOT NULL
+);
+
+-- The whole Session as JSON; `version` is the optimistic-concurrency counter.
+CREATE TABLE IF NOT EXISTS sessions (
+  id         text PRIMARY KEY,
+  wallet     text NOT NULL,
+  data       jsonb NOT NULL,
+  version    int NOT NULL DEFAULT 0,
+  created_at bigint NOT NULL
+);
+CREATE INDEX IF NOT EXISTS sessions_wallet ON sessions (wallet);
+
+-- Work for the Mac worker. Claimed with DELETE … SKIP LOCKED (one statement).
+CREATE TABLE IF NOT EXISTS jobs (
+  seq bigserial PRIMARY KEY,
+  job jsonb NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS images (
+  session_id text NOT NULL,
+  n          int NOT NULL,
+  b64        text NOT NULL,
+  PRIMARY KEY (session_id, n)
+);
+
+CREATE TABLE IF NOT EXISTS feed (
+  seq  bigserial PRIMARY KEY,
+  item jsonb NOT NULL
+);
+
+-- Single row: until when the worker should poll fast.
+CREATE TABLE IF NOT EXISTS hot (
+  id    int PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+  until bigint NOT NULL
+);

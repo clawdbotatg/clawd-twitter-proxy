@@ -1,25 +1,22 @@
 import { randomBytes, createHash } from "crypto";
-import { Redis } from "@upstash/redis";
+import { neon } from "@neondatabase/serverless";
 import { PriceState, startPriceFor } from "./price";
 import { JOB_TIMEOUT_MS, SESSION_TTL_MS } from "./limits";
 import { fetchHighestCV } from "./larv";
 
-/** All state lives in Upstash Redis under the `ctp:` prefix:
- *   ctp:price            PriceState — the running auction
- *   ctp:s:<id>           Session JSON
- *   ctp:w:<wallet>       set of that wallet's session ids
- *   ctp:img:<id>:<n>     base64 JPEG of a generated image
- *   ctp:jobs             list — work for the Mac worker (RPUSH / LPOP)
- *   ctp:feed             list — posted tweets, newest first
- *   ctp:lock:<key>       short mutex for read-modify-write
- *   ctp:hot              set while anyone is mid-session: the worker polls fast */
+/** All state lives in the `btt` schema of larv.ai's Neon Postgres, reached as
+ * the `btt` role — which cannot see larv.ai's own tables (CV balances etc.).
+ * Schema: tools/schema.sql. Tables: price, sessions, jobs, images, feed, hot. */
 
-const url = process.env.UPSTASH_REDIS_REST_URL || process.env.KV_REST_API_URL;
-const token = process.env.UPSTASH_REDIS_REST_TOKEN || process.env.KV_REST_API_TOKEN;
-export const redis = new Redis({ url: url!, token: token! });
-
-/** KEY_PREFIX lets a local dev run share a Redis without touching prod keys. */
-const P = process.env.KEY_PREFIX || "ctp:";
+let _sql: ReturnType<typeof neon> | null = null;
+function db() {
+  if (!_sql) {
+    const url = process.env.DATABASE_URL;
+    if (!url) throw new Error("DATABASE_URL is not set");
+    _sql = neon(url);
+  }
+  return _sql;
+}
 
 export type Role = "user" | "clawd";
 export interface Message {
@@ -83,63 +80,51 @@ export function hashToken(t: string): string {
   return createHash("sha256").update(t).digest("hex");
 }
 
-// ---------- locking ----------
-
-export async function withLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
-  const lockKey = `${P}lock:${key}`;
-  const me = newId(8);
-  for (let i = 0; i < 50; i++) {
-    const ok = await redis.set(lockKey, me, { nx: true, px: 10_000 });
-    if (ok) {
-      try {
-        return await fn();
-      } finally {
-        const cur = await redis.get<string>(lockKey);
-        if (cur === me) await redis.del(lockKey);
-      }
-    }
-    await new Promise(r => setTimeout(r, 100));
-  }
-  throw new Error("busy — try again");
-}
-
 // ---------- price ----------
 
+type PriceRow = { reset_at: string; start_price: string };
+const toPrice = (r: PriceRow): PriceState => ({ resetAt: Number(r.reset_at), startPrice: Number(r.start_price) });
+
 export async function getPriceState(): Promise<PriceState> {
-  const s = await redis.get<PriceState>(`${P}price`);
-  if (s) return s;
-  return withLock("price", async () => {
-    const again = await redis.get<PriceState>(`${P}price`);
-    if (again) return again;
-    const highest = await fetchHighestCV();
-    const init: PriceState = { resetAt: Date.now(), startPrice: startPriceFor(highest ?? 0) };
-    await redis.set(`${P}price`, init);
-    return init;
-  });
+  const rows = (await db()`SELECT reset_at, start_price FROM price WHERE id = 1`) as PriceRow[];
+  if (rows[0]) return toPrice(rows[0]);
+  const highest = await fetchHighestCV();
+  // First boot: whoever inserts first wins; everyone reads the winner.
+  await db()`INSERT INTO price (id, reset_at, start_price) VALUES (1, ${Date.now()}, ${startPriceFor(highest ?? 0)})
+             ON CONFLICT (id) DO NOTHING`;
+  const again = (await db()`SELECT reset_at, start_price FROM price WHERE id = 1`) as PriceRow[];
+  return toPrice(again[0]);
 }
 
 /** A tweet posted: restart the auction at 10% of today's top holder. */
 export async function resetPrice(): Promise<PriceState> {
   const highest = await fetchHighestCV();
-  return withLock("price", async () => {
-    const prev = await redis.get<PriceState>(`${P}price`);
-    const next: PriceState = {
-      resetAt: Date.now(),
-      startPrice: highest ? startPriceFor(highest) : prev?.startPrice ?? startPriceFor(0),
-    };
-    await redis.set(`${P}price`, next);
-    return next;
-  });
+  const now = Date.now();
+  const rows = (highest
+    ? await db()`INSERT INTO price (id, reset_at, start_price) VALUES (1, ${now}, ${startPriceFor(highest)})
+                 ON CONFLICT (id) DO UPDATE SET reset_at = EXCLUDED.reset_at, start_price = EXCLUDED.start_price
+                 RETURNING reset_at, start_price`
+    // Oracle down: restart the clock at the previous start price.
+    : await db()`INSERT INTO price (id, reset_at, start_price) VALUES (1, ${now}, ${startPriceFor(0)})
+                 ON CONFLICT (id) DO UPDATE SET reset_at = EXCLUDED.reset_at
+                 RETURNING reset_at, start_price`) as PriceRow[];
+  return toPrice(rows[0]);
 }
 
 // ---------- sessions ----------
 
-const ttlSec = Math.ceil((SESSION_TTL_MS * 8) / 1000); // keep the record a week past expiry
+type SessionRow = { data: Session; version: number };
+
+async function readSession(id: string): Promise<SessionRow | null> {
+  const rows = (await db()`SELECT data, version FROM sessions WHERE id = ${id}`) as SessionRow[];
+  return rows[0] ?? null;
+}
 
 export async function getSession(id: string): Promise<Session | null> {
   if (!/^[0-9a-f]{24}$/.test(id)) return null;
-  const s = await redis.get<Session>(`${P}s:${id}`);
-  if (!s) return null;
+  const row = await readSession(id);
+  if (!row) return null;
+  const s = row.data;
   // A job the worker never answered: release it so the user can retry.
   if (s.pending && Date.now() - s.pending.since > JOB_TIMEOUT_MS) {
     return updateSession(id, x => {
@@ -156,18 +141,27 @@ export async function getSession(id: string): Promise<Session | null> {
   return s;
 }
 
+/** Unconditional write (used right after create, before anyone else can race). */
 export async function saveSession(s: Session): Promise<void> {
-  await redis.set(`${P}s:${s.id}`, s, { ex: ttlSec });
+  await db()`INSERT INTO sessions (id, wallet, data, version, created_at)
+             VALUES (${s.id}, ${s.wallet}, ${JSON.stringify(s)}::jsonb, 0, ${s.createdAt})
+             ON CONFLICT (id) DO UPDATE SET data = EXCLUDED.data, version = sessions.version + 1`;
 }
 
+/** Read-modify-write with optimistic concurrency: the write only lands if
+ * nobody else wrote since we read; otherwise re-read and re-apply fn. */
 export async function updateSession(id: string, fn: (s: Session) => void | Promise<void>): Promise<Session | null> {
-  return withLock(`s:${id}`, async () => {
-    const s = await redis.get<Session>(`${P}s:${id}`);
-    if (!s) return null;
+  for (let attempt = 0; attempt < 20; attempt++) {
+    const row = await readSession(id);
+    if (!row) return null;
+    const s = row.data;
     await fn(s);
-    await saveSession(s);
-    return s;
-  });
+    const ok = (await db()`UPDATE sessions SET data = ${JSON.stringify(s)}::jsonb, version = version + 1
+                           WHERE id = ${id} AND version = ${row.version} RETURNING id`) as unknown[];
+    if (ok.length) return s;
+    await new Promise(r => setTimeout(r, 50 + Math.random() * 100));
+  }
+  throw new Error("busy — try again");
 }
 
 export async function createSession(wallet: string, pricePaid: number): Promise<{ session: Session; token: string }> {
@@ -192,7 +186,6 @@ export async function createSession(wallet: string, pricePaid: number): Promise<
     tweet: null,
   };
   await saveSession(session);
-  await redis.sadd(`${P}w:${session.wallet}`, session.id);
   await markHot();
   return { session, token };
 }
@@ -205,10 +198,10 @@ export async function rotateToken(id: string): Promise<string | null> {
 }
 
 export async function walletSessions(wallet: string): Promise<Session[]> {
-  const ids = await redis.smembers(`${P}w:${wallet.toLowerCase()}`);
-  const all = await Promise.all(ids.map(id => getSession(id)));
-  return all.filter((s): s is Session => !!s && s.status !== "unpaid" && s.status !== "void")
-    .sort((a, b) => b.createdAt - a.createdAt);
+  const rows = (await db()`SELECT data FROM sessions WHERE wallet = ${wallet.toLowerCase()}
+                           AND data->>'status' IN ('active', 'posted')
+                           ORDER BY created_at DESC LIMIT 20`) as { data: Session }[];
+  return rows.map(r => r.data);
 }
 
 export function authorized(s: Session, token: string | null | undefined): boolean {
@@ -223,38 +216,47 @@ export function publicView(s: Session) {
 
 // ---------- jobs ----------
 
-/** Idle, the worker polls every ~20s to stay inside Upstash's free command
- * budget; any purchase or action marks the desk hot and it polls every second. */
+/** Idle, the worker polls slowly; any purchase or action marks the desk hot
+ * for 20 minutes and it polls every second. */
 export async function markHot(): Promise<void> {
-  await redis.set(`${P}hot`, 1, { ex: 20 * 60 });
+  const until = Date.now() + 20 * 60 * 1000;
+  await db()`INSERT INTO hot (id, until) VALUES (1, ${until}) ON CONFLICT (id) DO UPDATE SET until = EXCLUDED.until`;
 }
 export async function isHot(): Promise<boolean> {
-  return (await redis.exists(`${P}hot`)) === 1;
+  const rows = (await db()`SELECT until FROM hot WHERE id = 1`) as { until: string }[];
+  return !!rows[0] && Number(rows[0].until) > Date.now();
 }
 
 export async function enqueue(job: Job): Promise<void> {
-  await redis.rpush(`${P}jobs`, job);
+  await db()`INSERT INTO jobs (job) VALUES (${JSON.stringify(job)}::jsonb)`;
   await markHot();
 }
+
+/** Oldest job, removed atomically — two pollers can never get the same one. */
 export async function claimJob(): Promise<Job | null> {
-  return (await redis.lpop<Job>(`${P}jobs`)) ?? null;
+  const rows = (await db()`DELETE FROM jobs WHERE seq = (
+                             SELECT seq FROM jobs ORDER BY seq LIMIT 1 FOR UPDATE SKIP LOCKED
+                           ) RETURNING job`) as { job: Job }[];
+  return rows[0]?.job ?? null;
 }
 
 // ---------- images ----------
 
 export async function putImage(id: string, n: number, b64: string): Promise<void> {
-  await redis.set(`${P}img:${id}:${n}`, b64, { ex: 60 * 60 * 24 * 30 });
+  await db()`INSERT INTO images (session_id, n, b64) VALUES (${id}, ${n}, ${b64})
+             ON CONFLICT (session_id, n) DO UPDATE SET b64 = EXCLUDED.b64`;
 }
 export async function getImage(id: string, n: number): Promise<string | null> {
-  return redis.get<string>(`${P}img:${id}:${n}`);
+  const rows = (await db()`SELECT b64 FROM images WHERE session_id = ${id} AND n = ${n}`) as { b64: string }[];
+  return rows[0]?.b64 ?? null;
 }
 
 // ---------- feed ----------
 
 export async function pushFeed(item: FeedItem): Promise<void> {
-  await redis.lpush(`${P}feed`, item);
-  await redis.ltrim(`${P}feed`, 0, 49);
+  await db()`INSERT INTO feed (item) VALUES (${JSON.stringify(item)}::jsonb)`;
 }
 export async function getFeed(n = 20): Promise<FeedItem[]> {
-  return (await redis.lrange<FeedItem>(`${P}feed`, 0, n - 1)) ?? [];
+  const rows = (await db()`SELECT item FROM feed ORDER BY seq DESC LIMIT ${n}`) as { item: FeedItem }[];
+  return rows.map(r => r.item);
 }

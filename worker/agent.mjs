@@ -1,5 +1,5 @@
 // A conversation turn: rebuild the whole exchange (stateless — the session
-// record in Redis is the only transcript) and ask clawd for a reply + draft.
+// record in the database is the only transcript) and ask clawd for a reply + draft.
 import { join } from "path";
 import { AGENT_DIR, runClaude } from "./claude.mjs";
 import { guardTweet } from "./guard.mjs";

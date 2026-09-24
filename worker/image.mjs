@@ -19,7 +19,7 @@ function clawdPrompt(scene) {
   );
 }
 
-/** Returns base64 JPEG (PNG from the API, recompressed so it fits in Redis). */
+/** Returns base64 JPEG (PNG from the API, recompressed to keep the stored copy small). */
 export async function generateImage(prompt, withClawd) {
   const key = process.env.OPENAI_API_KEY;
   if (!key) throw new Error("image generation isn't configured");

@@ -126,9 +126,8 @@ async function handle({ job, session, imageB64, maxTurns }) {
   }
 }
 
-// One poller feeds a bounded pool. Idle it polls every IDLE_POLL_MS (Upstash
-// free tier is ~500K commands/month); while the site reports someone
-// mid-session ("hot") it polls every second.
+// One poller feeds a bounded pool. Idle it polls every IDLE_POLL_MS; while
+// the site reports someone mid-session ("hot") it polls every second.
 const IDLE_POLL_MS = Number(process.env.IDLE_POLL_MS || 20_000);
 let running = 0;
 

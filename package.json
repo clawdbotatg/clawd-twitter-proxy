@@ -9,8 +9,8 @@
     "test": "node --test test/*.test.mjs"
   },
   "dependencies": {
+    "@neondatabase/serverless": "^1.1.0",
     "@tanstack/react-query": "^5.62.0",
-    "@upstash/redis": "^1.39.0",
     "next": "^15.3.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",

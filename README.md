@@ -25,7 +25,7 @@ A Dutch auction that restarts on every tweet:
 ## Architecture
 
 ```
-browser ──► Next.js on Vercel ──► Upstash Redis (ctp:*)
+browser ──► Next.js on Vercel ──► larv.ai's Neon Postgres (schema btt)
               │  /api/session  burn CV via larv.ai /api/cv/spend
               │  /api/worker/* job queue (bearer WORKER_SECRET)
               ▼
@@ -58,14 +58,20 @@ browser ──► Next.js on Vercel ──► Upstash Redis (ctp:*)
 
 ```bash
 npm install && (cd worker && npm install)
-# site: needs UPSTASH_REDIS_REST_URL/TOKEN (or KV_REST_API_*), CV_SPEND_SECRET, WORKER_SECRET
-KEY_PREFIX=ctp-dev: DEV_FAKE_SPEND=1 npm run dev          # fake spend works only in dev builds
+# site: needs DATABASE_URL (the btt role), CV_SPEND_SECRET, WORKER_SECRET
+DEV_FAKE_SPEND=1 npm run dev                                # fake spend works only in dev builds
 # worker:
 cp worker/.env.example worker/.env                          # API_BASE=http://localhost:3000
 DRY_RUN_POST=1 node worker/worker.mjs                       # never posts to X
 npm test
 ```
 
-Deploy: Vercel (zero config) with env `UPSTASH_REDIS_REST_URL`,
-`UPSTASH_REDIS_REST_TOKEN`, `CV_SPEND_SECRET`, `WORKER_SECRET`. Worker:
+Deploy: Vercel (zero config) with env `DATABASE_URL`, `CV_SPEND_SECRET`,
+`WORKER_SECRET`. Tables: `DATABASE_URL=… node tools/migrate.mjs`. Worker:
 `tools/install-worker.sh`.
+
+## Storage
+
+State lives in larv.ai's Neon Postgres, in its own `btt` schema, reached as
+a `btt` role that has **no access** to larv.ai's tables. That role can't
+read or change CV balances; spends still go through larv.ai's API.
