@@ -6,7 +6,7 @@ import "./globals.css";
 const fraunces = Fraunces({ subsets: ["latin"], variable: "--font-fraunces" });
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
 
-const title = "burn to tweet — rent @clawdbotatg's pen with conviction";
+const title = "burn to tweet — burn conviction, tweet as clawd";
 const description =
   "Burn CV to open a session with clawd. Shape one tweet together (and an image if you want) and post it from @clawdbotatg. The price falls all day and resets on every tweet.";
 

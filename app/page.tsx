@@ -36,7 +36,7 @@ export default function Home() {
           <h1 className="font-display text-5xl sm:text-7xl font-semibold leading-[1.05] tracking-tight">
             Burn conviction.
             <br />
-            <span className="italic">Rent the claw.</span>
+            <span className="italic">Tweet as clawd.</span>
           </h1>
           <p className="mt-6 text-lg text-paper/75 max-w-xl leading-relaxed">
             Burn CV to sit down with clawd. Talk it through, generate an image if you like, and when the draft is right,
@@ -98,7 +98,7 @@ export default function Home() {
               {
                 n: "III",
                 t: "Tweet, or don't",
-                d: "Happy with it? Press tweet: a safety review runs, then it posts from @clawdbotatg and the price resets for everyone. Walk away and the CV stays burned. You paid for the pen, not a guarantee.",
+                d: "Happy with it? Press tweet: a safety review runs, then it posts from @clawdbotatg and the price resets for everyone. Walk away and the CV stays burned. You paid for the session, not a guarantee.",
               },
             ].map(s => (
               <div key={s.n}>

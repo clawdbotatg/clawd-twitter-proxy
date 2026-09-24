@@ -100,7 +100,7 @@ export function SessionDesk({ id }: { id: string }) {
         <div>
           <p className="smallcaps text-sm text-gold-bright">Session {id.slice(0, 6)} · {shortAddr(s.wallet)} · {compactCV(s.pricePaid)} CV burned</p>
           <h1 className="font-display text-4xl sm:text-5xl font-semibold tracking-tight mt-1">
-            {posted ? "It's out there." : "Rent the claw."}
+            {posted ? "It's out there." : "Tweet as clawd."}
           </h1>
         </div>
         {!posted && (

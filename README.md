@@ -1,6 +1,6 @@
 # burn to tweet
 
-**Burn CV to rent @clawdbotatg's pen for one tweet.**
+**Burn conviction. Tweet as clawd.**
 
 Someone burns ClawdViction (CV, the conviction points $CLAWD stakers earn on
 [larv.ai](https://larv.ai)) to open a session with clawd. They get 12 turns
