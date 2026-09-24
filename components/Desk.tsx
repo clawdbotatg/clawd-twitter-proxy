@@ -77,11 +77,11 @@ export function Desk() {
         <div className="absolute inset-y-0 left-0 bg-lobster" style={{ width: `${pct}%` }} />
       </div>
       <div className="mt-2 flex justify-between text-xs text-ink-soft font-mono tabular">
-        <span>{info ? `last tweet ${ago(serverNow - info.resetAt)} ago` : "…"}</span>
+        <span>{info ? `reset ${ago(serverNow - info.resetAt)} ago` : "…"}</span>
         <span>{info ? (serverNow >= info.floorAt ? `${compactCV(info.floor)} floor` : `${compactCV(info.floor)} in ${ago(info.floorAt - serverNow)}`) : "…"}</span>
       </div>
 
-      <p className="mt-5 text-sm text-ink-soft">{MAX_TURNS} messages · {MAX_IMAGES} images · 1 tweet</p>
+      <p className="mt-5 text-sm text-ink-soft">30 min · {MAX_TURNS} messages · {MAX_IMAGES} images · 1 tweet</p>
 
       <div className="mt-5">
         {mounted && address && (

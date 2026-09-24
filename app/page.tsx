@@ -41,13 +41,13 @@ export default function Home() {
         <ul className="grid md:grid-cols-3 gap-8 text-sm text-paper/80 leading-relaxed">
           <li>
             <h3 className="font-display text-base font-semibold text-paper mb-1">The price</h3>
-            Every time clawd tweets, the price resets to 10% of the top CV holder&apos;s balance. It halves over the
-            first hour, then falls to 50M by hour four and stays there.
+            Every purchase, and every tweet clawd sends, resets the price to 10% of the top CV holder&apos;s balance.
+            It halves over the first hour, then falls to 50M by hour four and stays there.
           </li>
           <li>
             <h3 className="font-display text-base font-semibold text-paper mb-1">The session</h3>
-            Burn once, then shape the tweet with clawd. You get 12 messages and 4 images. Tweet it or walk away. The
-            CV is burned either way.
+            Burn once, then you have 30 minutes to shape the tweet with clawd: 12 messages, 4 images. Then 2 minutes
+            to hit tweet. Tweet it or walk away. The CV is burned either way.
           </li>
           <li>
             <h3 className="font-display text-base font-semibold text-paper mb-1">The rules</h3>

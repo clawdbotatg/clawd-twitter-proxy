@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Session } from "@/lib/store";
 import { compactCV, sessionToken, shortAddr } from "@/lib/client";
-import { MAX_IMAGES, MAX_TURNS } from "@/lib/limits";
+import { FINAL_MS, MAX_IMAGES, MAX_TURNS } from "@/lib/limits";
 import { Thinking } from "./Thinking";
 
 type View = Omit<Session, "tokenHash">;
@@ -19,6 +19,11 @@ async function toJpeg(file: File): Promise<string> {
   c.height = Math.round(bmp.height * scale);
   c.getContext("2d")!.drawImage(bmp, 0, 0, c.width, c.height);
   return c.toDataURL("image/jpeg", 0.88);
+}
+
+function clock(ms: number): string {
+  const t = Math.max(0, Math.ceil(ms / 1000));
+  return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, "0")}`;
 }
 
 function weightedLength(text: string): number {
@@ -36,6 +41,11 @@ export function SessionDesk({ id }: { id: string }) {
   const [withClawd, setWithClawd] = useState(true);
   const [confirming, setConfirming] = useState(false);
   const [dragging, setDragging] = useState(false);
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, []);
   const fileInput = useRef<HTMLInputElement>(null);
   const token = useRef<string | null>(null);
   const bottom = useRef<HTMLDivElement>(null);
@@ -112,11 +122,52 @@ export function SessionDesk({ id }: { id: string }) {
   }
   if (!s) return <Shell><p className="text-paper/70">…</p></Shell>;
 
-  const turnsLeft = MAX_TURNS - s.turns;
-  const canTalk = s.status === "active" && !readOnly && !s.pending && turnsLeft > 0;
   const posted = s.status === "posted";
-  const expired = s.status === "active" && Date.now() > s.expiresAt;
+  const draftEnd = s.expiresAt - FINAL_MS;
+  const expired = s.status === "active" && now > s.expiresAt;
+  const lastCall = s.status === "active" && !readOnly && now > draftEnd && !expired;
+  const turnsLeft = MAX_TURNS - s.turns;
+  const canTalk = s.status === "active" && !readOnly && !s.pending && turnsLeft > 0 && now < draftEnd;
   const attached = s.attachImage !== null ? s.images[s.attachImage] : null;
+
+  // Last call: drafting is over. Just the draft, the clock, and the button.
+  if (lastCall || (expired && !posted)) {
+    const posting = s.pending?.type === "post";
+    return (
+      <Shell>
+        <div className="max-w-xl mx-auto text-center">
+          <p className="smallcaps text-sm text-gold-bright">{expired && !posting ? "session over" : "last call"}</p>
+          <div className="font-display text-7xl font-semibold tabular mt-2">{expired && !posting ? "0:00" : clock(s.expiresAt - now)}</div>
+          <div className="mt-8 border border-line bg-paper text-ink shadow-xl p-5 text-left">
+            <div className="flex items-center gap-3 mb-3">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src="/clawd.jpg" alt="" className="w-10 h-10 rounded-full" />
+              <div className="text-sm leading-tight">
+                <div className="font-semibold">clawd</div>
+                <div className="text-ink-soft">@clawdbotatg</div>
+              </div>
+            </div>
+            {s.draft ? <p className="whitespace-pre-wrap text-[15px] leading-snug">{s.draft}</p> : <p className="text-ink-soft text-sm italic">no draft</p>}
+            {attached && attached.status === "ready" && (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={`/api/session/${id}/image/${attached.n}`} alt="" className="mt-3 w-full border border-line" />
+            )}
+            {s.draft && !expired && (
+              <button
+                onClick={() => act({ action: "tweet" })}
+                disabled={!!s.pending}
+                className="mt-5 w-full py-4 bg-ink text-paper smallcaps text-base font-semibold tracking-wider hover:bg-lobster transition-colors disabled:opacity-60"
+              >
+                {posting ? <Thinking label="safety check, then posting" since={s.pending!.since} /> : "Tweet"}
+              </button>
+            )}
+            {posting && expired && <p className="mt-4 text-sm text-ink-soft"><Thinking label="posting" since={s.pending!.since} /></p>}
+          </div>
+          {(err || s.notice) && <p className="mt-4 text-sm text-paper border border-paper/40 bg-lobster-deep px-4 py-3">{err || s.notice}</p>}
+        </div>
+      </Shell>
+    );
+  }
 
   return (
     <Shell>
@@ -127,10 +178,10 @@ export function SessionDesk({ id }: { id: string }) {
             {posted ? "Posted." : "Tweet as clawd."}
           </h1>
         </div>
-        {!posted && (
+        {!posted && !readOnly && (
           <div className="sm:text-right text-sm">
-            <div className="font-display text-3xl tabular">{turnsLeft}</div>
-            <div className="smallcaps text-paper/70">messages left</div>
+            <div className={`font-display text-4xl tabular ${draftEnd - now < 5 * 60 * 1000 ? "text-gold-bright" : ""}`}>{clock(draftEnd - now)}</div>
+            <div className="smallcaps text-paper/70">to draft · {turnsLeft} messages left</div>
           </div>
         )}
       </div>
@@ -330,7 +381,7 @@ export function SessionDesk({ id }: { id: string }) {
           {(err || s.notice) && (
             <p className="text-sm text-paper border border-paper/40 bg-lobster-deep px-4 py-3">{err || s.notice}</p>
           )}
-          {expired && <p className="text-sm text-paper/80">Expired.</p>}
+          
         </div>
       </div>
     </Shell>

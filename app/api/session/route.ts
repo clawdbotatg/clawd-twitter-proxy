@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { priceAt } from "@/lib/price";
-import { createSession, deskStatus, getPriceState, pushEvent, saveSession } from "@/lib/store";
+import { createSession, deskStatus, getPriceState, pushEvent, resetPrice, saveSession } from "@/lib/store";
 import { spendCV, verifyCVSignature } from "@/lib/larv";
 
 export const dynamic = "force-dynamic";
@@ -39,6 +39,8 @@ export async function POST(req: NextRequest) {
   }
   session.status = "active";
   await saveSession(session);
+  // Buying is what resets the auction: the next buyer faces the expensive hour.
+  await resetPrice();
   await pushEvent(`🔥 ${wallet.slice(0, 6)}…${wallet.slice(-4)} burned ${price.toLocaleString("en-US")} CV — session ${session.id.slice(0, 6)} open\nhttps://x.larv.ai`);
   return NextResponse.json({ id: session.id, token, pricePaid: price, newBalance: spent.newBalance });
 }

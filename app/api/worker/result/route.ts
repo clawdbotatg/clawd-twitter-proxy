@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { pushFeed, putImage, resetPrice, updateSession } from "@/lib/store";
+import { pushFeed, putImage, updateSession } from "@/lib/store";
 import { workerAuthorized } from "@/lib/worker-auth";
 
 export const dynamic = "force-dynamic";
@@ -76,7 +76,7 @@ export async function POST(req: Request) {
       sessionId: s.id,
       image: s.attachImage,
     });
-    await resetPrice();
+    // No reset here: the purchase already reset the auction for this slot.
   }
   return NextResponse.json({ ok: true });
 }

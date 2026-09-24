@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { MAX_IMAGES, MAX_IMAGE_PROMPT_CHARS, MAX_MESSAGE_CHARS, MAX_TURNS, MAX_UPLOAD_BYTES } from "@/lib/limits";
+import { MAX_IMAGES, MAX_IMAGE_PROMPT_CHARS, MAX_MESSAGE_CHARS, MAX_TURNS, MAX_UPLOAD_BYTES, draftEndsAt } from "@/lib/limits";
 import { JobType, Session, authorized, enqueue, getSession, newId, publicView, putImage, updateSession } from "@/lib/store";
 
 export const dynamic = "force-dynamic";
@@ -51,7 +51,10 @@ export async function POST(req: NextRequest, { params }: Params) {
   try {
     const s = await updateSession(id, (x: Session) => {
       if (x.status !== "active") throw new Refuse(x.status === "posted" ? "this session already tweeted" : "session is closed");
-      if (Date.now() > x.expiresAt) throw new Refuse("this session expired");
+      if (Date.now() > x.expiresAt) throw new Refuse("time's up — this session is over");
+      // Last call: drafting is closed, the only move left is to tweet.
+      const lastCall = Date.now() > draftEndsAt(x);
+      if (lastCall && body.action !== "tweet" && body.action !== "attach") throw new Refuse("drafting time is over — tweet it or let it go");
       x.notice = null;
 
       switch (body.action) {

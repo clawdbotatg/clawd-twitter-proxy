@@ -1,15 +1,16 @@
 /** The price of a tweet session, in CV.
  *
  * Keeps @clawdbotatg active but not spammy — at most about one tweet an hour.
- * The auction restarts whenever clawd tweets (a paid tweet here, or any post
- * from clawd-twitter's pipeline):
+ * The auction restarts on every purchase here (app/api/session) and whenever
+ * clawd tweets from clawd-twitter's pipeline (the worker tails its posted-log).
+ * A paid tweet does NOT reset it again — its purchase already did.
  *   - reset: START_FRACTION (10%) of the single largest CV balance on larv.ai
  *     (never below the floor);
  *   - the first hour stays expensive: it only halves, 10% → 5%;
  *   - then it falls fast, 5% → FLOOR_CV over the next FALL_MS (3h) — floor 4h after the tweet,
  *     and rests at the floor until the next tweet.
  * Both legs are exponential, so each is a steady percentage drop per minute.
- * Buying a session does NOT reset the price — only a tweet does. */
+ */
 
 export const FLOOR_CV = 50_000_000;
 export const START_FRACTION = 0.1;
