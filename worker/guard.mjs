@@ -9,6 +9,13 @@ const TCO_LEN = 23;
 
 export const CLAWD_TOKEN = "0x9f86db9fc6f7c9408e8fda3ff8ce4e78ac7a6b07";
 
+/** X links a bare $CLAWD to someone else's token (a Solana one). "base:<address>"
+ * in the text is how X stores a Smart Cashtag picked in its composer; it renders
+ * as $CLAWD pointing at ours. Applied only to the text sent to X. */
+export function smartCashtags(text) {
+  return text.replace(/\$CLAWD\b/gi, `base:${CLAWD_TOKEN}`);
+}
+
 /** Only links to our own things. A domain entry allows the whole domain and
  * its subdomains; a "domain/path" entry allows only that account/org. */
 export const ALLOWED_LINKS = [

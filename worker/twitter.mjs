@@ -1,5 +1,6 @@
 // Post as @clawdbotatg (OAuth 1.0a user context — same keys clawd-twitter uses).
 import { TwitterApi } from "twitter-api-v2";
+import { smartCashtags } from "./guard.mjs";
 
 let client;
 function clawd() {
@@ -51,6 +52,13 @@ export async function postTweet(text, jpegB64) {
     const mediaId = await c.v1.uploadMedia(Buffer.from(jpegB64, "base64"), { mimeType: "image/jpeg" });
     opts.media = { media_ids: [mediaId] };
   }
-  const { data } = await c.v2.tweet(text, opts);
+  let data;
+  try {
+    ({ data } = await c.v2.tweet(smartCashtags(text), opts));
+  } catch (e) {
+    // X refused the tagged form (e.g. over length): nothing posted, send it plain.
+    if (!(e.data || typeof e.code === "number") || smartCashtags(text) === text) throw e;
+    ({ data } = await c.v2.tweet(text, opts));
+  }
   return { id: data.id, url: `https://x.com/${HANDLE.replace(/^@/, "")}/status/${data.id}` };
 }
