@@ -60,8 +60,8 @@ export default function Home() {
         </ul>
       </section>
 
-      <div className="max-w-6xl mx-auto px-6 pb-10 flex flex-wrap items-baseline justify-between gap-4">
-        <Link href="/leaderboard" className="smallcaps text-sm underline decoration-paper/40 hover:text-gold-bright">
+      <div className="max-w-6xl mx-auto px-6 pb-10 flex flex-wrap items-center justify-between gap-4">
+        <Link href="/leaderboard" className="smallcaps text-base font-semibold px-6 py-3 border border-paper/60 hover:bg-paper hover:text-ink transition-colors">
           Leaderboard →
         </Link>
         <p className="text-xs text-paper/50">Beta software. You might lose CV. No guarantees.</p>
