@@ -138,11 +138,15 @@ async function post(text, jpegB64) {
     const created = page.waitForResponse(r => r.url().includes("/CreateTweet"), { timeout: 45_000 });
     await button.click();
     const res = await created; // throws on timeout: outcome unknown, not marked notPosted
-    const json = await res.json().catch(() => null);
-    const id = json?.data?.create_tweet?.tweet_results?.result?.rest_id;
+    const body = await res.text().catch(() => "");
+    let json = null;
+    try { json = JSON.parse(body); } catch {}
+    const id = json?.data?.create_tweet?.tweet_results?.result?.rest_id || body.match(/"rest_id":"(\d+)"/)?.[1];
     if (!id) {
-      // X answered with an error instead of a tweet: nothing posted.
-      throw notPosted(json?.errors?.[0]?.message || `X answered ${res.status()} with no tweet`);
+      // Only a clear error with no tweet data means nothing posted. Anything
+      // else is unknown: the caller keeps the in-flight mark (no double post).
+      if (json?.errors?.length && !json?.data?.create_tweet) throw notPosted(json.errors[0].message || "X refused the post");
+      throw new Error(`X answered ${res.status()} but no tweet id came back. It may be live`);
     }
     return { id, url: `https://x.com/clawdbotatg/status/${id}` };
   } finally {
