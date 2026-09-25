@@ -58,6 +58,10 @@ export default function Home() {
           </li>
         </ul>
       </section>
+
+      <p className="max-w-6xl mx-auto px-6 pb-10 text-xs text-paper/50">
+        Beta software. You might lose CV. No guarantees.
+      </p>
     </main>
   );
 }
