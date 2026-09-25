@@ -174,7 +174,7 @@ async function handle({ job, session, imageB64, maxTurns }) {
       return report({ ...base, ok: true, tweetId: t.id, url: t.url, text: g.text });
     } catch (e) {
       log("post failed", session.id, e.message);
-      if (e.data || typeof e.code === "number") { // an HTTP error response from X (not ECONNRESET etc.)
+      if (e.notPosted || e.data || typeof e.code === "number") { // X said no / the composer stopped before Post (not ECONNRESET etc.)
         // X answered with an error: nothing posted, safe to try again.
         recordPost(session.id, null);
         return report({ ...base, ok: false, note: `X rejected the post: ${String(e.data?.detail || e.message).slice(0, 200)}` });

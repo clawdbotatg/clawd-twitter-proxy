@@ -81,8 +81,9 @@ test("the agent child is isolated: no tools, no inherited secrets", () => {
   assert.ok(args.includes("--no-session-persistence"));
 });
 
-test("$CLAWD goes to X as our Base token's smart cashtag", async () => {
-  const { smartCashtags } = await import("../worker/guard.mjs");
-  assert.equal(smartCashtags("buy $CLAWD and $clawd, not $CLAWDX"),
-    "buy base:0x9f86db9fc6f7c9408e8fda3ff8ce4e78ac7a6b07 and base:0x9f86db9fc6f7c9408e8fda3ff8ce4e78ac7a6b07, not $CLAWDX");
+test("$CLAWD tweets go through X's composer (to pick our token)", async () => {
+  const { needsComposer } = await import("../worker/composer.mjs");
+  assert.ok(needsComposer("there is only one $CLAWD"));
+  assert.ok(needsComposer("$clawd."));
+  assert.ok(!needsComposer("$CLAWDX and clawd"));
 });

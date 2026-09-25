@@ -1,6 +1,6 @@
 // Post as @clawdbotatg (OAuth 1.0a user context — same keys clawd-twitter uses).
 import { TwitterApi } from "twitter-api-v2";
-import { smartCashtags } from "./guard.mjs";
+import { composerPost, needsComposer } from "./composer.mjs";
 
 let client;
 function clawd() {
@@ -42,6 +42,8 @@ export async function tweetMetrics(ids) {
 }
 
 export async function postTweet(text, jpegB64) {
+  // $CLAWD needs X's composer to pick our token (the chart). No API fallback.
+  if (needsComposer(text)) return composerPost(text, jpegB64);
   if (process.env.DRY_RUN_POST === "1") {
     const id = `dry${Date.now()}`;
     return { id, url: `https://x.com/${HANDLE}/status/${id}` };
@@ -52,13 +54,6 @@ export async function postTweet(text, jpegB64) {
     const mediaId = await c.v1.uploadMedia(Buffer.from(jpegB64, "base64"), { mimeType: "image/jpeg" });
     opts.media = { media_ids: [mediaId] };
   }
-  let data;
-  try {
-    ({ data } = await c.v2.tweet(smartCashtags(text), opts));
-  } catch (e) {
-    // X refused the tagged form (e.g. over length): nothing posted, send it plain.
-    if (!(e.data || typeof e.code === "number") || smartCashtags(text) === text) throw e;
-    ({ data } = await c.v2.tweet(text, opts));
-  }
+  const { data } = await c.v2.tweet(text, opts);
   return { id: data.id, url: `https://x.com/${HANDLE.replace(/^@/, "")}/status/${data.id}` };
 }
