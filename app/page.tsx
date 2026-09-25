@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { WalletBar } from "@/components/WalletBar";
 import { Desk } from "@/components/Desk";
 import { MySessions } from "@/components/MySessions";
@@ -59,9 +60,12 @@ export default function Home() {
         </ul>
       </section>
 
-      <p className="max-w-6xl mx-auto px-6 pb-10 text-xs text-paper/50">
-        Beta software. You might lose CV. No guarantees.
-      </p>
+      <div className="max-w-6xl mx-auto px-6 pb-10 flex flex-wrap items-baseline justify-between gap-4">
+        <Link href="/leaderboard" className="smallcaps text-sm underline decoration-paper/40 hover:text-gold-bright">
+          Leaderboard →
+        </Link>
+        <p className="text-xs text-paper/50">Beta software. You might lose CV. No guarantees.</p>
+      </div>
     </main>
   );
 }
