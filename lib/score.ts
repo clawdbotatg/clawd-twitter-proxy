@@ -40,9 +40,16 @@ export function scoreOf(m: TweetMetrics): number {
   return Math.round(s * 10) / 10;
 }
 
-/** When to read a tweet's numbers again: 1h, 1d, 7d after posting; 7d is final. */
-export const CHECKS_MS = [60 * 60 * 1000, 24 * 60 * 60 * 1000, 7 * 24 * 60 * 60 * 1000];
+const H = 60 * 60 * 1000;
+/** The score is final once a tweet is this old. */
+export const FINAL_AGE_MS = 7 * 24 * H;
 
-export function nextCheckAt(postedAt: number, checksDone: number): number | null {
-  return checksDone < CHECKS_MS.length ? postedAt + CHECKS_MS[checksDone] : null;
+/** When to read a tweet's numbers next (X bills each read, ~$0.005):
+ * every 30 min for the first 6 hours, every 3 hours to day one, then daily,
+ * with a last read at exactly 7 days. Null once final. */
+export function nextCheckAt(postedAt: number, now: number): number | null {
+  const age = now - postedAt;
+  if (age >= FINAL_AGE_MS) return null;
+  const every = age < 6 * H ? H / 2 : age < 24 * H ? 3 * H : 24 * H;
+  return Math.min(now + every, postedAt + FINAL_AGE_MS);
 }

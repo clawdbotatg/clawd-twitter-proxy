@@ -322,7 +322,7 @@ export interface ScoreRow {
 
 export async function trackTweet(t: { tweetId: string; sessionId: string; wallet: string; url: string; text: string; postedAt: number }): Promise<void> {
   await db()`INSERT INTO tweet_scores (tweet_id, session_id, wallet, url, text, posted_at, next_check_at)
-             VALUES (${t.tweetId}, ${t.sessionId}, ${t.wallet}, ${t.url}, ${t.text}, ${t.postedAt}, ${nextCheckAt(t.postedAt, 0)})
+             VALUES (${t.tweetId}, ${t.sessionId}, ${t.wallet}, ${t.url}, ${t.text}, ${t.postedAt}, ${nextCheckAt(t.postedAt, t.postedAt)})
              ON CONFLICT (tweet_id) DO NOTHING`;
 }
 
@@ -337,7 +337,7 @@ export async function recordMetrics(tweetId: string, m: TweetMetrics | null): Pr
   const rows = (await db()`SELECT posted_at, checks FROM tweet_scores WHERE tweet_id = ${tweetId}`) as { posted_at: string; checks: number }[];
   if (!rows[0]) return;
   const checks = rows[0].checks + 1;
-  const next = nextCheckAt(Number(rows[0].posted_at), checks);
+  const next = nextCheckAt(Number(rows[0].posted_at), Date.now());
   if (m) {
     await db()`UPDATE tweet_scores SET metrics = ${JSON.stringify(m)}::jsonb, score = ${scoreOf(m)}, checks = ${checks}, next_check_at = ${next}
                WHERE tweet_id = ${tweetId}`;
@@ -351,9 +351,9 @@ export async function leaderboard() {
   const creators = (await db()`SELECT wallet, count(*)::int AS tweets, coalesce(sum(score), 0)::float AS score
                                FROM tweet_scores GROUP BY wallet ORDER BY score DESC, tweets DESC LIMIT 100`) as
     { wallet: string; tweets: number; score: number }[];
-  const tweets = (await db()`SELECT tweet_id, wallet, url, text, posted_at, score::float AS score, metrics, checks
+  const tweets = (await db()`SELECT tweet_id, wallet, url, text, posted_at, score::float AS score, metrics, checks, next_check_at IS NULL AS final
                              FROM tweet_scores ORDER BY posted_at DESC LIMIT 50`) as
-    { tweet_id: string; wallet: string; url: string; text: string; posted_at: string; score: number; metrics: TweetMetrics | null; checks: number }[];
+    { tweet_id: string; wallet: string; url: string; text: string; posted_at: string; score: number; metrics: TweetMetrics | null; checks: number; final: boolean }[];
   return { creators, tweets: tweets.map(t => ({ ...t, posted_at: Number(t.posted_at) })) };
 }
 

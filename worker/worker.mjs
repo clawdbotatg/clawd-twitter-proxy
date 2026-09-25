@@ -218,9 +218,9 @@ process.on("SIGTERM", async () => {
   process.exit(0);
 });
 
-// Creator scores: every 10 minutes, read engagement for paid tweets that are
-// due (1h / 1d / 7d after posting) and hand the numbers to the site.
-const SCORE_EVERY_MS = 10 * 60 * 1000;
+// Creator scores: every 5 minutes, read engagement for paid tweets that are
+// due (the site decides when: lib/score.ts nextCheckAt) and hand it back.
+const SCORE_EVERY_MS = 5 * 60 * 1000;
 let lastScore = 0;
 async function scoreTweets() {
   if (Date.now() - lastScore < SCORE_EVERY_MS) return;

@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { CHECKS_MS, nextCheckAt, scoreOf } from "../lib/score.ts";
+import { nextCheckAt, scoreOf } from "../lib/score.ts";
 
 const zero = { likes: 0, reposts: 0, replies: 0, quotes: 0, bookmarks: 0, impressions: 0, profileClicks: 0, linkClicks: 0 };
 
@@ -18,8 +18,12 @@ test("replies and quotes are capped", () => {
   assert.equal(scoreOf({ ...zero, quotes: 10_000 }), 800);
 });
 
-test("checks at 1h, 1d, 7d, then final", () => {
-  assert.equal(nextCheckAt(0, 0), CHECKS_MS[0]);
-  assert.equal(nextCheckAt(0, 2), 7 * 24 * 3600 * 1000);
-  assert.equal(nextCheckAt(0, 3), null);
+test("reads every 30 min for 6h, every 3h to a day, daily to 7 days, then final", () => {
+  const H = 3600e3;
+  assert.equal(nextCheckAt(0, 0), H / 2);
+  assert.equal(nextCheckAt(0, 5 * H), 5.5 * H);
+  assert.equal(nextCheckAt(0, 7 * H), 10 * H);
+  assert.equal(nextCheckAt(0, 30 * H), 54 * H);
+  assert.equal(nextCheckAt(0, 160 * H), 168 * H); // last read lands exactly at 7 days
+  assert.equal(nextCheckAt(0, 168 * H), null);
 });

@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { Addr } from "@/components/Addr";
 import { leaderboard } from "@/lib/store";
-import { CHECKS_MS } from "@/lib/score";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "creators — burn to tweet", robots: { index: false } };
@@ -49,7 +48,7 @@ export default async function Leaderboard() {
                       <Addr address={t.wallet} size="xs" disableAddressLink />
                       · {new Date(t.posted_at).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
                     </span>
-                    <span className="font-semibold text-ink">{t.score} pts{t.checks >= CHECKS_MS.length ? "" : " · live"}</span>
+                    <span className="font-semibold text-ink">{t.score} pts{t.final ? "" : " · live"}</span>
                   </div>
                   <p className="mt-2 whitespace-pre-wrap text-sm">{t.text}</p>
                   {m && (
