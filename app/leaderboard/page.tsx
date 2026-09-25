@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { Addr } from "@/components/Addr";
+import { LocalTime } from "@/components/LocalTime";
 import { leaderboard } from "@/lib/store";
 
 export const dynamic = "force-dynamic";
@@ -46,7 +47,7 @@ export default async function Leaderboard() {
                   <div className="flex justify-between text-xs text-ink-soft font-mono">
                     <span className="flex items-center gap-2">
                       <Addr address={t.wallet} size="xs" disableAddressLink />
-                      · {new Date(t.posted_at).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
+                      · <LocalTime ms={t.posted_at} />
                     </span>
                     <span className="font-semibold text-ink">{t.score} pts{t.final ? "" : " · live"}</span>
                   </div>
