@@ -15,6 +15,7 @@ import {
   useConviction,
 } from "@/lib/conviction";
 import { MAX_IMAGES, MAX_TURNS } from "@/lib/limits";
+import { nextScheduledAt, scheduledRamp } from "@/lib/price";
 
 /** Price + buy, one card. */
 export function Desk() {
@@ -30,6 +31,8 @@ export function Desk() {
 
   const closed = info ? !info.open : false;
   const insufficient = !!address && account !== null && live !== null && account.balance < live;
+  const ramp = info ? scheduledRamp(serverNow) : null;
+  const clockTime = (ms: number) => new Date(ms).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
   const span = info ? info.floorAt - info.resetAt : 1;
   const pct = info ? Math.min(100, Math.max(0, ((serverNow - info.resetAt) / span) * 100)) : 0;
 
@@ -80,6 +83,14 @@ export function Desk() {
         <span>{info ? `reset ${ago(serverNow - info.resetAt)} ago` : "…"}</span>
         <span>{info ? (serverNow >= info.floorAt ? `${compactCV(info.floor)} floor` : `${compactCV(info.floor)} in ${ago(info.floorAt - serverNow)}`) : "…"}</span>
       </div>
+
+      {info && (
+        <p className={`mt-3 text-xs font-mono ${ramp ? "text-seal" : "text-ink-soft"}`}>
+          {ramp
+            ? `↑ climbing: clawd tweets at ${clockTime(ramp.slotAt)}`
+            : `clawd's next scheduled tweet: ${clockTime(nextScheduledAt(serverNow))}`}
+        </p>
+      )}
 
       <p className="mt-5 text-sm text-ink-soft">15 min · {MAX_TURNS} messages · {MAX_IMAGES} images · 1 tweet</p>
 
