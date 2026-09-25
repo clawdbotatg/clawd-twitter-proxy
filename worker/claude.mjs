@@ -12,6 +12,8 @@ import { spawn } from "child_process";
 import { mkdirSync } from "fs";
 import { join, dirname } from "path";
 import { fileURLToPath } from "url";
+import { withAccount } from "./accounts.mjs";
+import { telegram } from "./clawdtwitter.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 export const AGENT_DIR = join(HERE, "..", "agent");
@@ -22,7 +24,7 @@ export const MODEL = process.env.AGENT_MODEL || "claude-opus-5-5";
 const CLAUDE_BIN = process.env.CLAUDE_BIN || "claude";
 const TIMEOUT_MS = 4 * 60 * 1000;
 
-export function childEnv() {
+export function childEnv(configDir) {
   const env = {
     PATH: "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin",
     HOME: process.env.HOME,
@@ -40,7 +42,8 @@ export function childEnv() {
     DISABLE_AUTOUPDATER: "1",
   };
   // Which subscription login to bill (a ~/.clawd-accounts/<name> dir).
-  if (process.env.AGENT_CLAUDE_CONFIG_DIR) env.CLAUDE_CONFIG_DIR = process.env.AGENT_CLAUDE_CONFIG_DIR;
+  const dir = configDir ?? process.env.AGENT_CLAUDE_CONFIG_DIR;
+  if (dir) env.CLAUDE_CONFIG_DIR = dir;
   return env;
 }
 
@@ -67,11 +70,18 @@ export function claudeArgs(systemPromptFile, appendFile, streamJson = false) {
 /** Run one prompt against a system-prompt file; resolves to the text result.
  * `images` are base64 JPEGs shown to the model alongside the prompt. */
 export function runClaude(systemPromptFile, prompt, appendFile, images = []) {
+  return withAccount(
+    dir => runClaudeOn(dir, systemPromptFile, prompt, appendFile, images),
+    (acct, kind) => telegram(`⚠️ Claude login "${acct}" failed (${kind === "auth" ? "signed out" : kind === "limit" ? "out of quota" : "busy"}). Switched to the next one.`),
+  );
+}
+
+function runClaudeOn(configDir, systemPromptFile, prompt, appendFile, images) {
   const streamJson = images.length > 0;
   return new Promise((resolve, reject) => {
     const child = spawn(CLAUDE_BIN, claudeArgs(systemPromptFile, appendFile, streamJson), {
       cwd: SANDBOX,
-      env: childEnv(),
+      env: childEnv(configDir),
       stdio: ["pipe", "pipe", "pipe"],
     });
     let out = "", err = "";

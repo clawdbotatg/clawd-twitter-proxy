@@ -273,16 +273,25 @@ export async function getFeed(n = 20): Promise<FeedItem[]> {
 /** How long without a poll before we call the worker offline (idle poll is 20s). */
 export const WORKER_STALE_MS = 2 * 60 * 1000;
 
-export async function setWorkerStatus(paused: boolean): Promise<void> {
-  await db()`INSERT INTO worker_status (id, seen_at, paused) VALUES (1, ${Date.now()}, ${paused})
-             ON CONFLICT (id) DO UPDATE SET seen_at = EXCLUDED.seen_at, paused = EXCLUDED.paused`;
+export async function setWorkerStatus(paused: boolean, healthy: boolean): Promise<void> {
+  await db()`INSERT INTO worker_status (id, seen_at, paused, healthy) VALUES (1, ${Date.now()}, ${paused}, ${healthy})
+             ON CONFLICT (id) DO UPDATE SET seen_at = EXCLUDED.seen_at, paused = EXCLUDED.paused, healthy = EXCLUDED.healthy`;
+}
+
+/** Claude was down for `ms`: give every live session that time back. */
+export async function extendActiveSessions(ms: number): Promise<number> {
+  const now = Date.now();
+  const rows = (await db()`SELECT id FROM sessions WHERE data->>'status' = 'active'
+                           AND (data->>'expiresAt')::bigint > ${now - ms}`) as { id: string }[];
+  for (const { id } of rows) await updateSession(id, s => { s.expiresAt += ms; });
+  return rows.length;
 }
 
 /** Is the desk open for new purchases? */
 export async function deskStatus(): Promise<{ open: boolean; reason: string | null }> {
-  const rows = (await db()`SELECT seen_at, paused FROM worker_status WHERE id = 1`) as { seen_at: string; paused: boolean }[];
+  const rows = (await db()`SELECT seen_at, paused, healthy FROM worker_status WHERE id = 1`) as { seen_at: string; paused: boolean; healthy: boolean }[];
   const r = rows[0];
-  if (!r || Date.now() - Number(r.seen_at) > WORKER_STALE_MS) return { open: false, reason: "clawd is offline right now" };
+  if (!r || Date.now() - Number(r.seen_at) > WORKER_STALE_MS || !r.healthy) return { open: false, reason: "clawd is offline right now" };
   if (r.paused) return { open: false, reason: "the desk is closed for now" };
   return { open: true, reason: null };
 }

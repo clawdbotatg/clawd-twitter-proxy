@@ -15,6 +15,8 @@ import { reviewImagePrompt, reviewTweet, reviewUpload } from "./safety.mjs";
 import { generateImage } from "./image.mjs";
 import { postTweet, tweetMetrics } from "./twitter.mjs";
 import { newClawdTweets, recordInPostedLog, recordXReads, telegram } from "./clawdtwitter.mjs";
+import { accountNames, healthy as loginsLeft, summary as loginSummary } from "./accounts.mjs";
+import { AGENT_DIR, runClaude } from "./claude.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const STATE = join(HERE, "state");
@@ -235,16 +237,51 @@ async function scoreTweets() {
   }
 }
 
+// Claude health. A tiny test call every 10 minutes (every 2 while down), so a
+// dead login is found here — not by someone who just burned CV. While no
+// login works the worker reports unhealthy and the site stops selling; when
+// Claude comes back, live sessions get the lost minutes back.
+let claudeOk = true, downSince = 0, lastProbe = 0;
+async function probeClaude() {
+  const every = claudeOk ? 10 * 60 * 1000 : 2 * 60 * 1000;
+  if (Date.now() - lastProbe < every || running > 0) return;
+  lastProbe = Date.now();
+  let ok = false;
+  try {
+    ok = /ok/i.test(await runClaude(join(AGENT_DIR, "PING.md"), "health check"));
+  } catch (e) {
+    log("claude probe failed", e.message);
+  }
+  ok = ok && loginsLeft();
+  if (ok === claudeOk) return;
+  claudeOk = ok;
+  if (!ok) {
+    downSince = Date.now();
+    log("CLAUDE DOWN", loginSummary());
+    telegram(`🔴 no Claude login works. x.larv.ai stopped selling sessions.\n${loginSummary()}`);
+  } else {
+    const lost = Date.now() - downSince;
+    log("claude back after", Math.round(lost / 1000), "s");
+    try {
+      const { extended } = await api("/api/worker/extend", { ms: lost });
+      telegram(`🟢 Claude is back (down ${Math.round(lost / 60000)} min). x.larv.ai is selling again; ${extended} live session(s) got the time back.`);
+    } catch (e) {
+      log("extend failed", e.message);
+    }
+  }
+}
+
 async function poll() {
   newClawdTweets(); // prime the offset: start at the end of the log
   for (;;) {
     if (stopping) { await sleep(1000); continue; }
     await watchClawdTweets();
     await scoreTweets();
+    await probeClaude();
     if (running >= CONCURRENCY) { await sleep(500); continue; }
     let claimed;
     try {
-      claimed = await api("/api/worker/claim", { paused: existsSync(PAUSE_FILE) });
+      claimed = await api("/api/worker/claim", { paused: existsSync(PAUSE_FILE), healthy: claudeOk && loginsLeft() });
     } catch (e) {
       log("claim failed", e.message);
       await sleep(10_000);
@@ -259,5 +296,5 @@ async function poll() {
   }
 }
 
-log(`worker up → ${API} (${CONCURRENCY} at a time)`);
+log(`worker up → ${API} (${CONCURRENCY} at a time) · Claude logins: ${accountNames().join(", ") || "default"}`);
 poll();

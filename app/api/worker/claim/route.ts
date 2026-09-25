@@ -10,7 +10,7 @@ export const dynamic = "force-dynamic";
 export async function POST(req: Request) {
   if (!workerAuthorized(req)) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   const body = await req.json().catch(() => ({}));
-  await setWorkerStatus(!!body.paused);
+  await setWorkerStatus(!!body.paused, body.healthy !== false);
   const events = await takeEvents();
 
   for (let i = 0; i < 5; i++) {

@@ -79,3 +79,5 @@ CREATE TABLE IF NOT EXISTS attempts (
   at     bigint NOT NULL
 );
 CREATE INDEX IF NOT EXISTS attempts_wallet_at ON attempts (wallet, at);
+
+ALTER TABLE worker_status ADD COLUMN IF NOT EXISTS healthy boolean NOT NULL DEFAULT true;
