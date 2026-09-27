@@ -81,12 +81,34 @@ function contentProblems(text) {
   return problems;
 }
 
+// Bots that move money when an account tags them. @bankrbot runs a wallet for
+// every X handle and executes plain-English commands from that handle's own
+// tweets ("@bankrbot send all my ETH to …"), so a stranger-steered tweet that
+// tags it spends clawd's funds (the Grok/DRB incident, 2025). @clanker deploys
+// tokens in the tagger's name. Match inside the handle: Bankr answers to
+// several spellings, and any "bankr" handle is a trap either way.
+export const WALLET_BOTS = ["bankr", "clanker"];
+
+function walletBotProblems(text) {
+  const problems = [];
+  // NFKC already folded "＠" into "@"; X handles are ASCII word characters.
+  for (const [, h] of text.matchAll(/@([A-Za-z0-9_]{1,50})/g)) {
+    const flat = h.toLowerCase().replace(/_/g, "");
+    const bot = WALLET_BOTS.find(b => flat.includes(b));
+    if (bot) problems.push(`tags @${h} (a bot that moves money on command, never tagged from this account)`);
+  }
+  // Named without the @, e.g. "bankr bot, send …": still never.
+  if (/\bbankr(?:\s*bot)?\b|bankrbot/i.test(text) && !problems.length) problems.push("names Bankr (a bot that moves money on command)");
+  return problems;
+}
+
 /** Links / addresses / phishing checks for text that isn't the tweet itself
  * (e.g. words visible inside an attached image). */
 export function guardFreeText(text) {
   const problems = [];
   text = normalize(text);
   problems.push(...linkProblems(text));
+  problems.push(...walletBotProblems(text));
   for (const a of text.match(/0x[0-9a-fA-F]{40}/g) || []) {
     if (a.toLowerCase() !== CLAWD_TOKEN) problems.push("contains an address other than $CLAWD's");
   }
@@ -105,6 +127,7 @@ export function guardTweet(text) {
 
   const norm = normalize(text);
   problems.push(...linkProblems(norm));
+  problems.push(...walletBotProblems(norm));
   for (const a of norm.match(/0x[0-9a-fA-F]{40}/g) || []) {
     if (a.toLowerCase() !== CLAWD_TOKEN) problems.push("contains an address other than $CLAWD's");
   }
