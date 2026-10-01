@@ -49,8 +49,10 @@ const SHOTS = new URL("./state/composer/", import.meta.url).pathname;
 
 // One composer at a time: they'd fight over focus and the dropdown.
 let chain = Promise.resolve();
-export function composerPost(text, jpegB64) {
-  const run = chain.then(() => postWithRetry(text, jpegB64));
+// `findPosted(text, sinceMs)` → {id, url} | null: looks the tweet up on our
+// timeline, for when X's reply to the Post click can't be read.
+export function composerPost(text, jpegB64, findPosted) {
+  const run = chain.then(() => postWithRetry(text, jpegB64, findPosted));
   chain = run.catch(() => {});
   return run;
 }
@@ -59,13 +61,13 @@ export function composerPost(text, jpegB64) {
 // and the paid tweet never went out). Everything before Post is a dry run, so a
 // notPosted bail gets one more go on a fresh page. A failure after the Post
 // click is never retried.
-async function postWithRetry(text, jpegB64) {
+async function postWithRetry(text, jpegB64, findPosted) {
   try {
-    return await post(text, jpegB64, 1);
+    return await post(text, jpegB64, 1, findPosted);
   } catch (e) {
-    if (!e.notPosted) throw e;
+    if (!e.notPosted || e.afterClick) throw e;
     try {
-      return await post(text, jpegB64, 2);
+      return await post(text, jpegB64, 2, findPosted);
     } catch (e2) {
       if (e2.notPosted && e2.message !== e.message) e2.message = `${e2.message} (first try: ${e.message})`;
       throw e2;
@@ -75,7 +77,7 @@ async function postWithRetry(text, jpegB64) {
 
 const flat = s => s.replace(/\s+/g, " ").trim();
 
-async function post(text, jpegB64, attempt) {
+async function post(text, jpegB64, attempt, findPosted) {
   const browser = await connect();
   const page = await browser.contexts()[0].newPage();
   try {
@@ -157,19 +159,36 @@ async function post(text, jpegB64, attempt) {
       return { id, url: `https://x.com/clawdbotatg/status/${id}` };
     }
 
-    const created = page.waitForResponse(r => r.url().includes("/CreateTweet"), { timeout: 45_000 });
+    // X's reply to the click names the new tweet. Each picked cashtag counts as
+    // a long "base:0x…", so a tweet can go out as a note tweet (CreateNoteTweet);
+    // 2026-10-01 we only watched CreateTweet and called a live tweet failed. Log
+    // every GraphQL call after the click, and fall back to our timeline.
+    const seen = [];
+    page.on("response", r => { const m = r.url().match(/\/graphql\/[^/]+\/(\w+)/); if (m) seen.push(`${m[1]} ${r.status()}`); });
+    const created = page.waitForResponse(r => /\/Create(Note)?Tweet\b/.test(r.url()), { timeout: 30_000 }).catch(() => null);
+    const clickedAt = Date.now();
     await button.click();
-    const res = await created; // throws on timeout: outcome unknown, not marked notPosted
-    const body = await res.text().catch(() => "");
+    const res = await created;
+    const body = res ? await res.text().catch(() => "") : "";
     let json = null;
     try { json = JSON.parse(body); } catch {}
-    const id = json?.data?.create_tweet?.tweet_results?.result?.rest_id || body.match(/"rest_id":"(\d+)"/)?.[1];
-    if (!id) {
-      // Only a clear error with no tweet data means nothing posted. Anything
-      // else is unknown: the caller keeps the in-flight mark (no double post).
-      if (json?.errors?.length && !json?.data?.create_tweet) throw notPosted(json.errors[0].message || "X refused the post");
-      throw new Error(`X answered ${res.status()} but no tweet id came back. It may be live`);
+    let id = json?.data?.create_tweet?.tweet_results?.result?.rest_id || json?.data?.notetweet_create?.tweet_results?.result?.rest_id || body.match(/"rest_id":"(\d+)"/)?.[1];
+    // Only a clear error with no tweet data means nothing posted.
+    if (!id && json?.errors?.length && !json?.data?.create_tweet && !json?.data?.notetweet_create) {
+      const e = notPosted(json.errors[0].message || "X refused the post");
+      e.afterClick = true;
+      throw e;
     }
+    if (!id && findPosted) {
+      console.log(new Date().toISOString(), "composer: no tweet id in X's reply", res ? res.status() : "(none)", "· saw:", seen.join(", ") || "nothing");
+      for (let i = 0; i < 9 && !id; i++) {
+        await page.waitForTimeout(5_000);
+        id = (await findPosted(text, clickedAt - 60_000).catch(() => null))?.id;
+      }
+      if (id) console.log(new Date().toISOString(), "composer: found it on the timeline", id);
+    }
+    // Anything else is unknown: the caller keeps the in-flight mark (no double post).
+    if (!id) throw new Error(`X answered ${res ? res.status() : "nothing"} and the tweet isn't on the timeline yet. It may be live`);
     return { id, url: `https://x.com/clawdbotatg/status/${id}` };
   } catch (e) {
     if (e.notPosted) {

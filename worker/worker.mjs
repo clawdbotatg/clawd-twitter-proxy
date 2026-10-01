@@ -69,8 +69,9 @@ function recordPost(sessionId, entry) {
   writeFileSync(LEDGER, JSON.stringify(l, null, 2));
 }
 
-// Room for the composer's retry (two runs to the Post click) inside the site's 6 min job timeout.
-const X_TIMEOUT_MS = 240_000;
+// Room for the composer's retry (two runs to the Post click) and its timeline
+// check after the click, inside the site's 6 min job timeout.
+const X_TIMEOUT_MS = 300_000;
 function withTimeout(p, ms) {
   return Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error(`no answer from X in ${ms / 1000}s`)), ms))]);
 }

@@ -41,9 +41,22 @@ export async function tweetMetrics(ids) {
   return { metrics: out, read: (res.data || []).length };
 }
 
+// Our tweet with this text, posted at/after `sinceMs`, if X lists it yet. X
+// stores a picked cashtag as "base:0x…", which can push a tweet past 280 into a
+// note tweet (full text in note_tweet).
+const norm = s => s.replace(/base:0x[0-9a-f]{40}/gi, "$CLAWD").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/https:\/\/t\.co\/\w+/g, "").replace(/\s+/g, " ").trim();
+async function findPosted(text, sinceMs) {
+  const c = clawd();
+  const me = (await c.v2.me()).data.id;
+  const tl = await c.v2.userTimeline(me, { max_results: 5, exclude: ["replies", "retweets"], "tweet.fields": "created_at,note_tweet" });
+  const want = norm(text);
+  const t = tl.tweets.find(t => Date.parse(t.created_at) >= sinceMs && norm(t.note_tweet?.text || t.text) === want);
+  return t ? { id: t.id, url: `https://x.com/${HANDLE.replace(/^@/, "")}/status/${t.id}` } : null;
+}
+
 export async function postTweet(text, jpegB64) {
   // $CLAWD needs X's composer to pick our token (the chart). No API fallback.
-  if (needsComposer(text)) return composerPost(text, jpegB64);
+  if (needsComposer(text)) return composerPost(text, jpegB64, findPosted);
   if (process.env.DRY_RUN_POST === "1") {
     const id = `dry${Date.now()}`;
     return { id, url: `https://x.com/${HANDLE}/status/${id}` };
