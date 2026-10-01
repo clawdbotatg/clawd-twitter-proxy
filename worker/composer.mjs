@@ -7,6 +7,7 @@
 // exactly the tweet, nothing is posted (err.notPosted). Only after the Post
 // click is the outcome uncertain.
 import { spawn } from "node:child_process";
+import { mkdirSync } from "node:fs";
 import { chromium } from "playwright-core";
 import { CLAWD_TOKEN } from "./guard.mjs";
 
@@ -43,17 +44,38 @@ async function connect() {
   throw notPosted("clawd's browser didn't start");
 }
 
+// Where a failed attempt's screenshot goes (gitignored), so a bail can be read later.
+const SHOTS = new URL("./state/composer/", import.meta.url).pathname;
+
 // One composer at a time: they'd fight over focus and the dropdown.
 let chain = Promise.resolve();
 export function composerPost(text, jpegB64) {
-  const run = chain.then(() => post(text, jpegB64));
+  const run = chain.then(() => postWithRetry(text, jpegB64));
   chain = run.catch(() => {});
   return run;
 }
 
+// X's composer is flaky (2026-10-01: the chart card didn't show in time once,
+// and the paid tweet never went out). Everything before Post is a dry run, so a
+// notPosted bail gets one more go on a fresh page. A failure after the Post
+// click is never retried.
+async function postWithRetry(text, jpegB64) {
+  try {
+    return await post(text, jpegB64, 1);
+  } catch (e) {
+    if (!e.notPosted) throw e;
+    try {
+      return await post(text, jpegB64, 2);
+    } catch (e2) {
+      if (e2.notPosted && e2.message !== e.message) e2.message = `${e2.message} (first try: ${e.message})`;
+      throw e2;
+    }
+  }
+}
+
 const flat = s => s.replace(/\s+/g, " ").trim();
 
-async function post(text, jpegB64) {
+async function post(text, jpegB64, attempt) {
   const browser = await connect();
   const page = await browser.contexts()[0].newPage();
   try {
@@ -100,7 +122,7 @@ async function post(text, jpegB64) {
     // The pick attaches the token's chart card; that card is the whole point.
     if (parts.length > 1) {
       try {
-        await dialog.locator('[aria-label="Cashtag attachments"]').filter({ hasText: "clawd.atg.eth" }).first().waitFor({ timeout: 10_000 });
+        await dialog.locator('[aria-label="Cashtag attachments"]').filter({ hasText: "clawd.atg.eth" }).first().waitFor({ timeout: 20_000 });
       } catch {
         throw notPosted("X didn't attach the $CLAWD chart");
       }
@@ -149,6 +171,14 @@ async function post(text, jpegB64) {
       throw new Error(`X answered ${res.status()} but no tweet id came back. It may be live`);
     }
     return { id, url: `https://x.com/clawdbotatg/status/${id}` };
+  } catch (e) {
+    if (e.notPosted) {
+      try {
+        mkdirSync(SHOTS, { recursive: true });
+        await page.screenshot({ path: `${SHOTS}${Date.now()}-try${attempt}.png` });
+      } catch {}
+    }
+    throw e;
   } finally {
     await page.close({ runBeforeUnload: false }).catch(() => {});
     await browser.close().catch(() => {}); // disconnects; the browser keeps running

@@ -69,7 +69,8 @@ function recordPost(sessionId, entry) {
   writeFileSync(LEDGER, JSON.stringify(l, null, 2));
 }
 
-const X_TIMEOUT_MS = 90_000;
+// Room for the composer's retry (two runs to the Post click) inside the site's 6 min job timeout.
+const X_TIMEOUT_MS = 240_000;
 function withTimeout(p, ms) {
   return Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error(`no answer from X in ${ms / 1000}s`)), ms))]);
 }
@@ -177,6 +178,9 @@ async function handle({ job, session, imageB64, maxTurns }) {
       if (e.notPosted || e.data || typeof e.code === "number") { // X said no / the composer stopped before Post (not ECONNRESET etc.)
         // X answered with an error: nothing posted, safe to try again.
         recordPost(session.id, null);
+        // A paid tweet that didn't go out: Austin hears about it (2026-10-01, one
+        // failed silently and the session ran out before the buyer retried).
+        telegram(`❌ ${short(session.wallet)}'s tweet didn't go out (session ${session.id.slice(0, 6)}, ${Number(session.pricePaid).toLocaleString("en-US")} CV): ${String(e.data?.detail || e.message).slice(0, 200)}. Nothing posted; they can retry until the session ends.`);
         return report({ ...base, ok: false, note: `X rejected the post: ${String(e.data?.detail || e.message).slice(0, 200)}` });
       }
       // Timeout / network: it may have landed. Keep the in-flight mark.
