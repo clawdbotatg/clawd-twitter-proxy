@@ -12,7 +12,9 @@ const DIRS = (process.env.AGENT_CLAUDE_CONFIG_DIRS || process.env.AGENT_CLAUDE_C
   .split(",").map(s => s.trim()).filter(Boolean)
   .map(d => (d.includes("/") ? d : join(homedir(), ".clawd-accounts", d)));
 
-const state = new Map(DIRS.map(d => [d, { coolUntil: 0, reason: "" }]));
+// `down` = we already told Austin this login failed; stays set through every
+// cool-down retry until a call on it succeeds, so one outage is one ping.
+const state = new Map(DIRS.map(d => [d, { coolUntil: 0, reason: "", down: false }]));
 const name = d => d.split("/").pop();
 
 /** What an error means for the login that produced it. */
@@ -49,18 +51,23 @@ export function summary() {
 }
 
 /** Run fn(configDir) on the first usable login, falling through to the next
- * when a login fails for login reasons. onSwitch(dir, kind) reports a switch. */
+ * when a login fails for login reasons. onSwitch(name, kind) reports a switch,
+ * once per outage — retries of a login that's still dead stay quiet. */
 export async function withAccount(fn, onSwitch) {
   if (DIRS.length === 0) return fn(undefined);
   let lastErr;
   for (const dir of usable()) {
     try {
-      return await fn(dir);
+      const r = await fn(dir);
+      state.get(dir).down = false;
+      return r;
     } catch (e) {
       const c = classify(e.message);
       if (!c) throw e;
       cool(dir, c.kind, c.coolMs, e.message);
-      onSwitch?.(name(dir), c.kind);
+      const s = state.get(dir);
+      if (!s.down) onSwitch?.(name(dir), c.kind);
+      s.down = true;
       lastErr = e;
     }
   }

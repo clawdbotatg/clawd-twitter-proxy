@@ -31,3 +31,30 @@ test("a non-login error doesn't burn through the other logins", async () => {
   // all cooled from the last test; a fresh module state would be needed to go further
   assert.equal(classify("prompt too long"), null);
 });
+
+test("a login that stays dead is reported once, not on every retry", async () => {
+  process.env.AGENT_CLAUDE_CONFIG_DIRS = "/y/a,/y/b";
+  const m = await import("../worker/accounts.mjs?once");
+  const switched = [];
+  let aWorks = false;
+  const call = () => m.withAccount(async dir => {
+    if (dir === "/y/a" && !aWorks) throw new Error("OAuth session expired");
+    return "ok";
+  }, (name, kind) => switched.push(`${name}:${kind}`));
+  const realNow = Date.now;
+  try {
+    await call();                                  // a fails → one ping
+    Date.now = () => realNow() + 31 * 60 * 1000;   // cool-down over, a retried
+    await call();                                  // still dead → quiet
+    assert.deepEqual(switched, ["a:auth"]);
+    aWorks = true;
+    Date.now = () => realNow() + 62 * 60 * 1000;
+    await call();                                  // a back → flag clears
+    aWorks = false;
+    Date.now = () => realNow() + 63 * 60 * 1000;
+    await call();                                  // a new outage → pinged again
+    assert.deepEqual(switched, ["a:auth", "a:auth"]);
+  } finally {
+    Date.now = realNow;
+  }
+});
