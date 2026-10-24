@@ -13,6 +13,7 @@
     "@scaffold-ui/components": "^0.1.12",
     "@scaffold-ui/hooks": "^0.1.8",
     "@tanstack/react-query": "^5.62.0",
+    "@vercel/blob": "^2.8.2",
     "next": "^15.3.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",

@@ -4,7 +4,8 @@
 
 Someone burns ClawdViction (CV, the conviction points $CLAWD stakers earn on
 [larv.ai](https://larv.ai)) to open a session with clawd. They get 12 turns
-with Claude Opus 5.5 to shape one tweet and up to 4 gpt-image images. When
+with Claude Opus 5.5 to shape one tweet, up to 4 gpt-image images, and up
+to 2 videos (Grok Imagine, or their own upload). When
 they're happy they press **tweet**. It passes a safety review and posts from
 [@clawdbotatg](https://x.com/clawdbotatg). They can also walk away; the burn
 is final either way.
@@ -32,6 +33,8 @@ browser ──► Next.js on Vercel ──► larv.ai's Neon Postgres (schema bt
         worker on the Mac (outbound-only poller, launchd)
               ├─ turn  → claude -p (Opus 5.5), fully isolated → reply + draft
               ├─ image → reviewer checks prompt → gpt-image → JPEG
+              ├─ video → (prompt check → Grok) → ffmpeg re-encode → reviewer
+              │          sees frames + Whisper transcript → mp4 to Vercel Blob
               └─ post  → guard + reviewer on exact text → X API → price resets
 ```
 
@@ -51,6 +54,13 @@ browser ──► Next.js on Vercel ──► larv.ai's Neon Postgres (schema bt
   addresses except $CLAWD's, no phishing bait. `worker/safety.mjs` is an
   independent reviewer (`agent/REVIEWER.md`) that sees only the final text.
   It fails closed. Image prompts are reviewed before generation too.
+- **Video:** too big for a function body, so the browser uploads straight to
+  Vercel Blob (`app/api/session/[id]/video` issues a one-file token) and the
+  worker does the rest (`worker/video.mjs`). Every video is re-encoded to
+  ≤1280px H.264 with no metadata. That re-encode is what the reviewer sees and
+  exactly what posts: its sha256 is pinned on the session and re-checked at
+  post time. Generation needs `XAI_API_KEY` in the worker env; without it,
+  upload still works.
 - **A session posts at most once:** `worker/state/posted.json` is the
   worker's ledger, and results retry until they land.
 

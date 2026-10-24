@@ -34,7 +34,7 @@ export async function POST(req: Request) {
         turns: s.turns,
       },
     };
-    if (job.type === "post" && s.attachImage !== null) {
+    if (job.type === "post" && s.attachImage !== null && s.images[s.attachImage]?.kind !== "video") {
       payload.imageB64 = await getImage(s.id, s.attachImage);
     }
     if (job.type === "image" && job.n !== undefined && s.images[job.n]?.source === "upload") {

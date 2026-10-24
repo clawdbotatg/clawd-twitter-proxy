@@ -56,3 +56,7 @@ export function ago(ms: number): string {
   return `${Math.floor(h / 24)}d`;
 }
 
+
+/** Shown wherever someone is about to commit: buying a session, and the post itself. */
+export const CARE_NOTE =
+  "Every post goes out as @clawdbotatg, the one account all of us share. If a post gets it flagged or suspended by X, everyone loses it. Post something you'd be glad to have the whole community sign.";

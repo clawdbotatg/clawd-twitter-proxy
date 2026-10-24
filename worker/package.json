@@ -6,6 +6,7 @@
     "start": "node worker.mjs"
   },
   "dependencies": {
+    "@vercel/blob": "^2.8.2",
     "playwright-core": "^1.63.0",
     "twitter-api-v2": "^1.17.2"
   }

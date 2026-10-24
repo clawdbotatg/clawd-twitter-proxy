@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { MAX_IMAGES, MAX_IMAGE_PROMPT_CHARS, MAX_MESSAGE_CHARS, MAX_TURNS, MAX_UPLOAD_BYTES, draftEndsAt } from "@/lib/limits";
-import { JobType, Session, authorized, enqueue, getSession, newId, publicView, putImage, updateSession } from "@/lib/store";
+import { MAX_IMAGES, MAX_IMAGE_PROMPT_CHARS, MAX_MESSAGE_CHARS, MAX_TURNS, MAX_UPLOAD_BYTES, MAX_VIDEOS, draftEndsAt } from "@/lib/limits";
+import { JobType, Session, authorized, enqueue, getSession, isVideo, newId, publicView, putImage, updateSession } from "@/lib/store";
+import { isSessionBlob } from "@/lib/blob";
 
 export const dynamic = "force-dynamic";
 
@@ -19,13 +20,14 @@ export async function GET(req: NextRequest, { params }: Params) {
     if (s.status === "posted") return NextResponse.json({ session: { ...publicView(s), messages: [] }, readOnly: true });
     return NextResponse.json({ error: "not your session" }, { status: 403 });
   }
-  return NextResponse.json({ session: publicView(s), limits: { MAX_TURNS, MAX_IMAGES } });
+  return NextResponse.json({ session: publicView(s), limits: { MAX_TURNS, MAX_IMAGES, MAX_VIDEOS } });
 }
 
 class Refuse extends Error {}
 
 /** Failures on our side (timeouts, crashes) don't use up an image. */
-const imagesUsed = (x: Session) => x.images.filter(i => i.status !== "failed").length;
+const imagesUsed = (x: Session) => x.images.filter(i => !isVideo(i) && i.status !== "failed").length;
+const videosUsed = (x: Session) => x.images.filter(i => isVideo(i) && i.status !== "failed").length;
 
 /** Every user action on a paid session. One job in flight at a time. */
 export async function POST(req: NextRequest, { params }: Params) {
@@ -87,9 +89,30 @@ export async function POST(req: NextRequest, { params }: Params) {
           job = { type: "image", n };
           break;
         }
+        case "video": {
+          const prompt = String(body.prompt ?? "").trim();
+          if (!prompt) throw new Refuse("describe the video");
+          if (prompt.length > MAX_IMAGE_PROMPT_CHARS) throw new Refuse(`keep it under ${MAX_IMAGE_PROMPT_CHARS} characters`);
+          if (x.pending) throw new Refuse("clawd is still working on the last one");
+          if (videosUsed(x) >= MAX_VIDEOS) throw new Refuse(`that's all ${MAX_VIDEOS} videos for this session`);
+          const n = x.images.length;
+          x.images.push({ n, prompt, withClawd: !!body.withClawd, status: "pending", source: "generated", kind: "video" });
+          job = { type: "video", n };
+          break;
+        }
+        case "video-upload": {
+          // The file is already in Blob (via ./video); the worker re-encodes and reviews it.
+          if (!isSessionBlob(body.url, id)) throw new Refuse("that upload didn't land, try again");
+          if (x.pending) throw new Refuse("clawd is still working on the last one");
+          if (videosUsed(x) >= MAX_VIDEOS) throw new Refuse(`that's all ${MAX_VIDEOS} videos for this session`);
+          const n = x.images.length;
+          x.images.push({ n, prompt: "", withClawd: false, status: "pending", source: "upload", kind: "video", url: body.url });
+          job = { type: "video", n };
+          break;
+        }
         case "attach": {
           const n = body.n === null ? null : Number(body.n);
-          if (n !== null && x.images[n]?.status !== "ready") throw new Refuse("that image isn't ready");
+          if (n !== null && x.images[n]?.status !== "ready") throw new Refuse(`that ${isVideo(x.images[n] ?? {}) ? "video" : "image"} isn't ready`);
           x.attachImage = n;
           break;
         }

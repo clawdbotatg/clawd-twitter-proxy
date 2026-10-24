@@ -54,16 +54,21 @@ async function findPosted(text, sinceMs) {
   return t ? { id: t.id, url: `https://x.com/${HANDLE.replace(/^@/, "")}/status/${t.id}` } : null;
 }
 
-export async function postTweet(text, jpegB64) {
+/** At most one of `jpegB64` (base64 JPEG) or `mp4` (Buffer) rides along. */
+export async function postTweet(text, jpegB64, mp4 = null) {
   // $CLAWD needs X's composer to pick our token (the chart). No API fallback.
-  if (needsComposer(text)) return composerPost(text, jpegB64, findPosted);
+  if (needsComposer(text)) return composerPost(text, jpegB64, findPosted, mp4);
   if (process.env.DRY_RUN_POST === "1") {
     const id = `dry${Date.now()}`;
     return { id, url: `https://x.com/${HANDLE}/status/${id}` };
   }
   const c = clawd();
   const opts = {};
-  if (jpegB64) {
+  if (mp4) {
+    // Chunked upload; resolves once X has finished processing the video.
+    const mediaId = await c.v1.uploadMedia(mp4, { mimeType: "video/mp4" });
+    opts.media = { media_ids: [mediaId] };
+  } else if (jpegB64) {
     const mediaId = await c.v1.uploadMedia(Buffer.from(jpegB64, "base64"), { mimeType: "image/jpeg" });
     opts.media = { media_ids: [mediaId] };
   }

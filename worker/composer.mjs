@@ -51,8 +51,8 @@ const SHOTS = new URL("./state/composer/", import.meta.url).pathname;
 let chain = Promise.resolve();
 // `findPosted(text, sinceMs)` → {id, url} | null: looks the tweet up on our
 // timeline, for when X's reply to the Post click can't be read.
-export function composerPost(text, jpegB64, findPosted) {
-  const run = chain.then(() => postWithRetry(text, jpegB64, findPosted));
+export function composerPost(text, jpegB64, findPosted, mp4 = null) {
+  const run = chain.then(() => postWithRetry(text, jpegB64, findPosted, mp4));
   chain = run.catch(() => {});
   return run;
 }
@@ -61,13 +61,13 @@ export function composerPost(text, jpegB64, findPosted) {
 // and the paid tweet never went out). Everything before Post is a dry run, so a
 // notPosted bail gets one more go on a fresh page. A failure after the Post
 // click is never retried.
-async function postWithRetry(text, jpegB64, findPosted) {
+async function postWithRetry(text, jpegB64, findPosted, mp4) {
   try {
-    return await post(text, jpegB64, 1, findPosted);
+    return await post(text, jpegB64, 1, findPosted, mp4);
   } catch (e) {
     if (!e.notPosted || e.afterClick) throw e;
     try {
-      return await post(text, jpegB64, 2, findPosted);
+      return await post(text, jpegB64, 2, findPosted, mp4);
     } catch (e2) {
       if (e2.notPosted && e2.message !== e.message) e2.message = `${e2.message} (first try: ${e.message})`;
       throw e2;
@@ -77,7 +77,7 @@ async function postWithRetry(text, jpegB64, findPosted) {
 
 const flat = s => s.replace(/\s+/g, " ").trim();
 
-async function post(text, jpegB64, attempt, findPosted) {
+async function post(text, jpegB64, attempt, findPosted, mp4) {
   const browser = await connect();
   const page = await browser.contexts()[0].newPage();
   try {
@@ -146,9 +146,22 @@ async function post(text, jpegB64, attempt, findPosted) {
       }
     }
 
+    if (mp4) {
+      const vids = dialog.locator('[data-testid="attachments"] video');
+      const before = await vids.count();
+      await dialog.locator('input[data-testid="fileInput"]').setInputFiles({ name: "clawd.mp4", mimeType: "video/mp4", buffer: mp4 });
+      try {
+        await page.waitForFunction(([sel, n]) => document.querySelectorAll(sel).length > n,
+          ['[role="dialog"] [data-testid="attachments"] video', before], { timeout: 60_000 });
+      } catch {
+        throw notPosted("the video didn't attach in X's composer");
+      }
+    }
+
     const button = dialog.locator('[data-testid="tweetButton"]');
     try {
-      await page.waitForFunction(el => el && el.getAttribute("aria-disabled") !== "true", await button.elementHandle(), { timeout: 30_000 });
+      // Post stays disabled while X uploads and processes a video.
+      await page.waitForFunction(el => el && el.getAttribute("aria-disabled") !== "true", await button.elementHandle(), { timeout: mp4 ? 150_000 : 30_000 });
     } catch {
       throw notPosted("X's Post button stayed disabled");
     }

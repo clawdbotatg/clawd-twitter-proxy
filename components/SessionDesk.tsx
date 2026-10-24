@@ -5,13 +5,16 @@ import { Addr } from "@/components/Addr";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Session } from "@/lib/store";
-import { compactCV, sessionToken } from "@/lib/client";
-import { FINAL_MS, MAX_IMAGES, MAX_TURNS } from "@/lib/limits";
+import { CARE_NOTE, compactCV, sessionToken } from "@/lib/client";
+import { upload as blobUpload } from "@vercel/blob/client";
+import { FINAL_MS, MAX_IMAGES, MAX_TURNS, MAX_VIDEOS, MAX_VIDEO_UPLOAD_BYTES, VIDEO_TYPES } from "@/lib/limits";
 import { Thinking } from "./Thinking";
 import { WalletBar } from "./WalletBar";
 import { useCreator } from "./useCreator";
 
 type View = Omit<Session, "tokenHash">;
+type Media = View["images"][number];
+const isVid = (m: Media) => m.kind === "video";
 
 /** Re-encode any image as a ≤1600px JPEG in the browser. That also strips
  * EXIF (GPS, camera) and anything else riding along in the file. */
@@ -45,6 +48,9 @@ export function SessionDesk({ id }: { id: string }) {
   const [text, setText] = useState("");
   const [imgPrompt, setImgPrompt] = useState("");
   const [withClawd, setWithClawd] = useState(true);
+  const [vidPrompt, setVidPrompt] = useState("");
+  const [vidWithClawd, setVidWithClawd] = useState(true);
+  const [uploadPct, setUploadPct] = useState<number | null>(null);
   const [confirming, setConfirming] = useState(false);
   const [dragging, setDragging] = useState(false);
   const creator = useCreator(s?.status === "posted" ? s.wallet : undefined);
@@ -54,6 +60,7 @@ export function SessionDesk({ id }: { id: string }) {
     return () => clearInterval(t);
   }, []);
   const fileInput = useRef<HTMLInputElement>(null);
+  const videoInput = useRef<HTMLInputElement>(null);
   const token = useRef<string | null>(null);
   const bottom = useRef<HTMLDivElement>(null);
   const seen = useRef(0);
@@ -107,11 +114,36 @@ export function SessionDesk({ id }: { id: string }) {
   }
 
   async function upload(file: File | undefined) {
+    if (file?.type.startsWith("video/")) return uploadVideo(file);
     if (!file || !file.type.startsWith("image/")) { setErr("that's not an image"); return; }
     try {
       await act({ action: "upload", jpeg: await toJpeg(file) });
     } catch {
       setErr("couldn't read that image");
+    }
+  }
+
+  /** Straight to Blob (too big for our API), then the worker re-encodes and reviews it. */
+  async function uploadVideo(file: File) {
+    if (!VIDEO_TYPES.includes(file.type)) { setErr("use an mp4, mov or webm video"); return; }
+    if (file.size > MAX_VIDEO_UPLOAD_BYTES) { setErr(`videos up to ${MAX_VIDEO_UPLOAD_BYTES / 1024 / 1024} MB`); return; }
+    setErr(null);
+    setUploadPct(0);
+    try {
+      const ext = file.type === "video/quicktime" ? "mov" : file.type === "video/webm" ? "webm" : "mp4";
+      const blob = await blobUpload(`btt/${id}/upload.${ext}`, file, {
+        access: "public",
+        handleUploadUrl: `/api/session/${id}/video`,
+        clientPayload: token.current || "",
+        contentType: file.type,
+        multipart: file.size > 20 * 1024 * 1024,
+        onUploadProgress: p => setUploadPct(p.percentage),
+      });
+      await act({ action: "video-upload", url: blob.url });
+    } catch (e) {
+      setErr((e as Error).message?.replace(/^Vercel Blob: /, "") || "the upload didn't work");
+    } finally {
+      setUploadPct(null);
     }
   }
 
@@ -136,6 +168,9 @@ export function SessionDesk({ id }: { id: string }) {
   const turnsLeft = MAX_TURNS - s.turns;
   const canTalk = s.status === "active" && !readOnly && !s.pending && turnsLeft > 0 && now < draftEnd;
   const attached = s.attachImage !== null ? s.images[s.attachImage] : null;
+  const images = s.images.filter(m => !isVid(m));
+  const videos = s.images.filter(isVid);
+  const videosLeft = MAX_VIDEOS - videos.filter(v => v.status !== "failed").length;
 
   // Last call: drafting is over. Just the draft, the clock, and the button.
   if (lastCall || (expired && !posted)) {
@@ -155,10 +190,8 @@ export function SessionDesk({ id }: { id: string }) {
               </div>
             </div>
             {s.draft ? <p className="whitespace-pre-wrap text-[15px] leading-snug">{s.draft}</p> : <p className="text-ink-soft text-sm italic">no draft</p>}
-            {attached && attached.status === "ready" && (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={`/api/session/${id}/image/${attached.n}`} alt="" className="mt-3 w-full border border-line" />
-            )}
+            {attached && attached.status === "ready" && <AttachedMedia id={id} m={attached} />}
+            {s.draft && !expired && !posting && <p className="mt-5 text-xs text-ink-soft leading-snug">{CARE_NOTE}</p>}
             {s.draft && !expired && (
               <button
                 onClick={() => act({ action: "tweet" })}
@@ -274,10 +307,7 @@ export function SessionDesk({ id }: { id: string }) {
               ) : (
                 <p className="text-ink-soft text-sm italic">—</p>
               )}
-              {attached && attached.status === "ready" && (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={`/api/session/${id}/image/${attached.n}`} alt={attached.prompt} className="mt-3 w-full border border-line" />
-              )}
+              {attached && attached.status === "ready" && <AttachedMedia id={id} m={attached} />}
             </div>
 
             {posted && s.tweet && (
@@ -292,7 +322,8 @@ export function SessionDesk({ id }: { id: string }) {
               <div className="px-5 pb-5 space-y-3">
                 {confirming ? (
                   <div className="border border-seal/50 bg-seal/5 p-3 text-sm space-y-3">
-                    <p>Post this{attached ? " with the image" : ""}? No undo.</p>
+                    <p className="font-semibold">Post this{attached ? ` with the ${isVid(attached) ? "video" : "image"}` : ""}? No undo.</p>
+                    <p className="text-ink-soft leading-snug">{CARE_NOTE}</p>
                     <div className="flex gap-2">
                       <button
                         onClick={async () => { setConfirming(false); await act({ action: "tweet" }); }}
@@ -323,16 +354,16 @@ export function SessionDesk({ id }: { id: string }) {
               className={`border bg-paper text-ink shadow-xl ${dragging ? "border-lobster border-2" : "border-line"}`}
               onDragOver={e => { e.preventDefault(); setDragging(true); }}
               onDragLeave={() => setDragging(false)}
-              onDrop={e => { e.preventDefault(); setDragging(false); if (!s.pending && s.images.filter(i => i.status !== "failed").length < MAX_IMAGES) upload(e.dataTransfer.files[0]); }}
+              onDrop={e => { e.preventDefault(); setDragging(false); if (!s.pending && images.filter(i => i.status !== "failed").length < MAX_IMAGES) upload(e.dataTransfer.files[0]); }}
             >
               <div className="border-b border-line bg-paper-dark px-6 py-3 flex justify-between items-baseline">
                 <span className="smallcaps text-sm font-semibold text-ink-soft">Image</span>
-                <span className="font-mono text-xs text-ink-soft">{s.images.filter(i => i.status !== "failed").length}/{MAX_IMAGES}</span>
+                <span className="font-mono text-xs text-ink-soft">{images.filter(i => i.status !== "failed").length}/{MAX_IMAGES}</span>
               </div>
               <div className="p-5 space-y-3">
-                {s.images.length > 0 && (
+                {images.length > 0 && (
                   <div className="grid grid-cols-2 gap-2">
-                    {s.images.map(img => (
+                    {images.map(img => (
                       <button
                         key={img.n}
                         disabled={img.status !== "ready" || !!s.pending}
@@ -349,7 +380,7 @@ export function SessionDesk({ id }: { id: string }) {
                     ))}
                   </div>
                 )}
-                {s.images.filter(i => i.status !== "failed").length < MAX_IMAGES && (
+                {images.filter(i => i.status !== "failed").length < MAX_IMAGES && (
                   <>
                     <textarea
                       value={imgPrompt}
@@ -392,6 +423,80 @@ export function SessionDesk({ id }: { id: string }) {
             </div>
           )}
 
+          {/* video */}
+          {!posted && !readOnly && (
+            <div className="border border-line bg-paper text-ink shadow-xl">
+              <div className="border-b border-line bg-paper-dark px-6 py-3 flex justify-between items-baseline">
+                <span className="smallcaps text-sm font-semibold text-ink-soft">Video</span>
+                <span className="font-mono text-xs text-ink-soft">{MAX_VIDEOS - videosLeft}/{MAX_VIDEOS}</span>
+              </div>
+              <div className="p-5 space-y-3">
+                {videos.length > 0 && (
+                  <div className="grid grid-cols-2 gap-2">
+                    {videos.map(v => (
+                      <button
+                        key={v.n}
+                        disabled={v.status !== "ready" || !!s.pending}
+                        onClick={() => act({ action: "attach", n: s.attachImage === v.n ? null : v.n })}
+                        className={`relative aspect-video border-2 ${s.attachImage === v.n ? "border-lobster" : "border-line"} bg-paper-dark text-xs text-ink-soft flex items-center justify-center overflow-hidden`}
+                        title={v.prompt}
+                      >
+                        {v.status === "ready" && v.url ? (
+                          <video src={`${v.url}#t=0.5`} muted playsInline preload="metadata" className="w-full h-full object-cover" />
+                        ) : v.status === "pending" ? (
+                          <Thinking label={v.source === "upload" ? "checking" : "filming"} since={s.pending?.type === "video" ? s.pending.since : undefined} />
+                        ) : v.note || v.status}
+                        {v.status === "ready" && v.seconds !== undefined && <span className="absolute bottom-1 left-1 bg-ink/80 text-paper px-1.5 font-mono">{Math.round(v.seconds)}s</span>}
+                        {s.attachImage === v.n && <span className="absolute top-1 right-1 bg-lobster text-paper px-1.5 smallcaps">attached</span>}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {uploadPct !== null && <p className="text-sm text-ink-soft"><Thinking label={`uploading ${Math.round(uploadPct)}%`} /></p>}
+                {videosLeft > 0 && (
+                  <>
+                    <textarea
+                      value={vidPrompt}
+                      onChange={e => setVidPrompt(e.target.value)}
+                      placeholder="describe the video (Grok, about 8 seconds)"
+                      rows={2}
+                      maxLength={1000}
+                      className="w-full border border-line bg-white px-3 py-2 text-sm focus:outline-none focus:border-ink resize-none"
+                    />
+                    <div className="flex items-center justify-between gap-3">
+                      <label className="text-sm flex items-center gap-2">
+                        <input type="checkbox" checked={vidWithClawd} onChange={e => setVidWithClawd(e.target.checked)} />
+                        feature clawd
+                      </label>
+                      <button
+                        onClick={() => videoInput.current?.click()}
+                        disabled={!!s.pending || expired || uploadPct !== null}
+                        className="ml-auto text-sm underline text-ink-soft hover:text-ink disabled:opacity-40"
+                      >
+                        or upload
+                      </button>
+                      <input
+                        ref={videoInput}
+                        type="file"
+                        accept={VIDEO_TYPES.join(",")}
+                        className="hidden"
+                        onChange={e => { const f = e.target.files?.[0]; if (f) uploadVideo(f); e.target.value = ""; }}
+                      />
+                      <button
+                        onClick={() => act({ action: "video", prompt: vidPrompt, withClawd: vidWithClawd })}
+                        disabled={!vidPrompt.trim() || !!s.pending || expired || uploadPct !== null}
+                        className="px-4 py-2 bg-ink text-paper smallcaps text-sm font-semibold hover:bg-lobster disabled:opacity-40"
+                      >
+                        {s.pending?.type === "video" ? <Thinking label="working" /> : "Generate"}
+                      </button>
+                    </div>
+                    <p className="text-xs text-ink-soft">Up to 140 seconds. Every frame and every word gets the same safety check as the tweet.</p>
+                  </>
+                )}
+              </div>
+            </div>
+          )}
+
           {err && (
             <p className="text-sm text-paper border border-paper/40 bg-lobster-deep px-4 py-3">{err}</p>
           )}
@@ -400,6 +505,12 @@ export function SessionDesk({ id }: { id: string }) {
       </div>
     </Shell>
   );
+}
+
+function AttachedMedia({ id, m }: { id: string; m: Media }) {
+  if (isVid(m)) return m.url ? <video src={m.url} controls playsInline preload="metadata" className="mt-3 w-full border border-line bg-ink" /> : null;
+  // eslint-disable-next-line @next/next/no-img-element
+  return <img src={`/api/session/${id}/image/${m.n}`} alt={m.prompt} className="mt-3 w-full border border-line" />;
 }
 
 function Shell({ children }: { children: React.ReactNode }) {

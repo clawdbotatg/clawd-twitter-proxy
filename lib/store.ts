@@ -1,7 +1,7 @@
 import { randomBytes, createHash } from "crypto";
 import { neon } from "@neondatabase/serverless";
 import { PriceState, startPriceFor } from "./price";
-import { JOB_TIMEOUT_MS, SESSION_TTL_MS } from "./limits";
+import { JOB_TIMEOUT_MS, SESSION_TTL_MS, VIDEO_JOB_TIMEOUT_MS } from "./limits";
 import { fetchHighestCV } from "./larv";
 import { TweetMetrics, nextCheckAt, scoreOf } from "./score";
 
@@ -27,16 +27,28 @@ export interface Message {
   draft?: string | null;
   ts: number;
 }
+/** An image or a video slot. Images live in the images table; videos in
+ * Vercel Blob (`url`), since they're too big for a function body. */
 export interface SessionImage {
   n: number;
   /** generation prompt ("" for uploads) */
   prompt: string;
   source?: "generated" | "upload";
+  kind?: "image" | "video";
   withClawd: boolean;
   status: "pending" | "ready" | "refused" | "failed";
   note?: string;
+  /** video: the blob. While pending it's the raw upload; once ready it's the
+   * worker's re-encode, the exact file that was reviewed and will post. */
+  url?: string;
+  /** video: sha256 of the reviewed file; the post re-checks it. */
+  sha256?: string;
+  /** video: what's said in it (Whisper), for the final review. */
+  transcript?: string;
+  seconds?: number;
 }
-export type JobType = "turn" | "image" | "post";
+export const isVideo = (m: { kind?: string }) => m.kind === "video";
+export type JobType = "turn" | "image" | "video" | "post";
 export interface Session {
   id: string;
   wallet: string;
@@ -74,6 +86,7 @@ export interface FeedItem {
   postedAt: number;
   sessionId: string;
   image: number | null;
+  video?: string | null;
 }
 
 export function newId(bytes = 12): string {
@@ -133,10 +146,10 @@ export async function getSession(id: string): Promise<Session | null> {
   if (!row) return null;
   const s = row.data;
   // A job the worker never answered: release it so the user can retry.
-  if (s.pending && Date.now() - s.pending.since > JOB_TIMEOUT_MS) {
+  if (s.pending && Date.now() - s.pending.since > jobTimeout(s)) {
     return updateSession(id, x => {
-      if (x.pending && Date.now() - x.pending.since > JOB_TIMEOUT_MS) {
-        if (x.pending.type === "image") {
+      if (x.pending && Date.now() - x.pending.since > jobTimeout(x)) {
+        if (x.pending.type === "image" || x.pending.type === "video") {
           const img = x.images.find(i => i.status === "pending");
           if (img) { img.status = "failed"; img.note = "timed out"; }
         }
@@ -146,6 +159,12 @@ export async function getSession(id: string): Promise<Session | null> {
     });
   }
   return s;
+}
+
+function jobTimeout(s: Session): number {
+  const t = s.pending?.type;
+  const withVideo = t === "post" && s.attachImage !== null && isVideo(s.images[s.attachImage] ?? {});
+  return t === "video" || withVideo ? VIDEO_JOB_TIMEOUT_MS : JOB_TIMEOUT_MS;
 }
 
 /** Unconditional write (used right after create, before anyone else can race). */

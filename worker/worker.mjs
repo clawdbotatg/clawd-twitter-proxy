@@ -4,6 +4,8 @@
 //
 //   turn   → clawd (isolated claude -p) replies + drafts
 //   image  → reviewer checks the prompt → gpt-image → JPEG back to the site
+//   video  → (generated: reviewer checks the prompt → Grok) → re-encode →
+//            reviewer sees frames + transcript → mp4 to Blob
 //   post   → guard + reviewer on the exact text → post as @clawdbotatg
 import "./env.mjs";
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from "fs";
@@ -11,8 +13,9 @@ import { join, dirname } from "path";
 import { fileURLToPath } from "url";
 import { runTurn } from "./agent.mjs";
 import { guardTweet } from "./guard.mjs";
-import { reviewImagePrompt, reviewTweet, reviewUpload } from "./safety.mjs";
+import { reviewImagePrompt, reviewTweet, reviewUpload, reviewVideo } from "./safety.mjs";
 import { generateImage } from "./image.mjs";
+import { download, framesFromMp4, generateVideo, prepareVideo, sha256, storeVideo } from "./video.mjs";
 import { postTweet, tweetMetrics } from "./twitter.mjs";
 import { newClawdTweets, recordInPostedLog, recordXReads, telegram } from "./clawdtwitter.mjs";
 import { accountNames, healthy as loginsLeft, summary as loginSummary } from "./accounts.mjs";
@@ -72,6 +75,8 @@ function recordPost(sessionId, entry) {
 // Room for the composer's retry (two runs to the Post click) and its timeline
 // check after the click, inside the site's 6 min job timeout.
 const X_TIMEOUT_MS = 300_000;
+// A video adds X's upload + processing (inside the site's 12 min video timeout).
+const X_VIDEO_TIMEOUT_MS = 540_000;
 function withTimeout(p, ms) {
   return Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error(`no answer from X in ${ms / 1000}s`)), ms))]);
 }
@@ -132,6 +137,39 @@ async function handle({ job, session, imageB64, maxTurns }) {
     }
   }
 
+  if (job.type === "video") {
+    const vid = session.images[job.n];
+    const generated = vid?.source !== "upload";
+    const fail = (note, refused = false) => report({ ...base, n: job.n, ok: false, refused, note });
+    try {
+      if (!vid) throw new Error("no such video slot");
+      let raw;
+      if (generated) {
+        const v = await reviewImagePrompt(vid.prompt, vid.withClawd, "video");
+        if (!v.allow) {
+          telegram(`🛡️ video blocked for ${short(session.wallet)}: ${v.reason}\nprompt: ${vid.prompt.slice(0, 200)}`);
+          return fail(`video refused: ${v.reason}`, true);
+        }
+        raw = await generateVideo(vid.prompt, vid.withClawd);
+      } else {
+        raw = await download(vid.url);
+      }
+      const p = await prepareVideo(raw);
+      const v = await reviewVideo({ frames: p.frames, transcript: p.transcript, prompt: generated ? vid.prompt : null });
+      if (!v.allow) {
+        telegram(`🛡️ ${generated ? "generated" : "uploaded"} video blocked for ${short(session.wallet)}: ${v.reason}`);
+        return fail(`video refused: ${v.reason}`, true);
+      }
+      const url = await storeVideo(api, session.id, job.n, p.mp4);
+      log("video ok", session.id, job.n, `${p.seconds}s ${Math.round(p.mp4.length / 1024)}KB ${p.frames.length} frames`);
+      return report({ ...base, n: job.n, ok: true, url, sha256: p.sha256, transcript: p.transcript, seconds: p.seconds });
+    } catch (e) {
+      log("video failed", session.id, job.n, e.message);
+      if (e.refused) return fail("video refused by Grok's safety filter", true);
+      return fail(e.userNote || (generated ? "video generation failed. Try again" : "couldn't check that video. Try again"));
+    }
+  }
+
   if (job.type === "post") {
     const prior = ledger()[session.id];
     if (prior?.inflight) {
@@ -146,11 +184,24 @@ async function handle({ job, session, imageB64, maxTurns }) {
     const g = guardTweet(session.draft);
     if (!g.ok) return report({ ...base, ok: false, note: `can't post: ${g.problems.join("; ")}` });
     const img = session.attachImage !== null ? session.images[session.attachImage] : null;
-    if (img && !imageB64) return report({ ...base, ok: false, note: "couldn't load the attached image — detach it or try again" });
+    const isVid = img?.kind === "video";
+    if (img && !isVid && !imageB64) return report({ ...base, ok: false, note: "couldn't load the attached image — detach it or try again" });
+    // The video must be byte-for-byte the one that passed review.
+    let mp4 = null;
+    if (isVid) {
+      try {
+        mp4 = await download(img.url);
+        if (sha256(mp4) !== img.sha256) throw new Error("hash mismatch");
+      } catch (e) {
+        log("video load failed", session.id, e.message);
+        return report({ ...base, ok: false, note: "couldn't load the attached video. Detach it or try again" });
+      }
+    }
 
     let v;
     try {
-      v = await reviewTweet(g.text, img ? imageB64 : null, img && img.source !== "upload" ? img.prompt : null);
+      const video = isVid ? { frames: await framesFromMp4(mp4), transcript: img.transcript || "", prompt: img.source !== "upload" ? img.prompt : null } : null;
+      v = await reviewTweet(g.text, img && !isVid ? imageB64 : null, img && !isVid && img.source !== "upload" ? img.prompt : null, video);
     } catch (e) {
       log("review failed", session.id, e.message);
       return report({ ...base, ok: false, note: "the safety check didn't run — try again" });
@@ -165,7 +216,7 @@ async function handle({ job, session, imageB64, maxTurns }) {
     // (from this session or a re-queued job) can post it twice.
     recordPost(session.id, { inflight: true, at: Date.now() });
     try {
-      const t = await withTimeout(postTweet(g.text, img ? imageB64 : null), X_TIMEOUT_MS);
+      const t = await withTimeout(postTweet(g.text, img && !isVid ? imageB64 : null, mp4), mp4 ? X_VIDEO_TIMEOUT_MS : X_TIMEOUT_MS);
       recordPost(session.id, { id: t.id, url: t.url, text: g.text, wallet: session.wallet, at: Date.now() });
       log("POSTED", session.id, t.url);
       const dry = process.env.DRY_RUN_POST === "1";

@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useAccount, useSignMessage } from "wagmi";
 import { usePrice } from "./usePrice";
 import { Thinking } from "./Thinking";
-import { ago, compactCV, rememberSession } from "@/lib/client";
+import { CARE_NOTE, ago, compactCV, rememberSession } from "@/lib/client";
 import {
   CV_SIGN_MESSAGE,
   clearCachedCVSignature,
@@ -14,7 +14,7 @@ import {
   setCachedCVSignature,
   useConviction,
 } from "@/lib/conviction";
-import { MAX_IMAGES, MAX_TURNS } from "@/lib/limits";
+import { MAX_IMAGES, MAX_TURNS, MAX_VIDEOS } from "@/lib/limits";
 import { nextScheduledAt, scheduledRamp } from "@/lib/price";
 
 /** Price + buy, one card. */
@@ -92,7 +92,8 @@ export function Desk() {
         </p>
       )}
 
-      <p className="mt-5 text-sm text-ink-soft">15 min · {MAX_TURNS} messages · {MAX_IMAGES} images · 1 tweet</p>
+      <p className="mt-5 text-sm text-ink-soft">15 min · {MAX_TURNS} messages · {MAX_IMAGES} images · {MAX_VIDEOS} videos · 1 tweet</p>
+      <p className="mt-3 text-xs text-ink-soft leading-snug border-l-2 border-lobster pl-3">{CARE_NOTE}</p>
 
       <div className="mt-5">
         {mounted && address && (

@@ -48,13 +48,14 @@ export default function Home() {
           </li>
           <li>
             <h3 className="font-display text-base font-semibold text-paper mb-1">The session</h3>
-            Burn once, then you have 15 minutes to shape the tweet with clawd: 12 messages, 4 images. Then 2 minutes
+            Burn once, then you have 15 minutes to shape the tweet with clawd: 12 messages, 4 images, 2 videos. Then 2 minutes
             to hit tweet. Tweet it or walk away. The CV is burned either way.
           </li>
           <li>
             <h3 className="font-display text-base font-semibold text-paper mb-1">The rules</h3>
             Every tweet is safety-checked before it posts. No scams, shilling, harassment, or anything against X&apos;s
-            rules. No CV?{" "}
+            rules. The checker is the floor, not the bar: it&apos;s the one account all of us share, and if X suspends
+            it, everyone loses it. No CV?{" "}
             <a href="https://stake.onedollaraudit.com" className="underline hover:text-gold-bright" target="_blank" rel="noopener noreferrer">Stake $CLAWD</a>.
           </li>
         </ul>
